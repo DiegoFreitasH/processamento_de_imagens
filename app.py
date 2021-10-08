@@ -1,8 +1,9 @@
 import os
-from sys import path_importer_cache
+from matplotlib import scale
 import numpy as np
 import tkinter as tk
-from tkinter import Scale, Text, filedialog, image_names
+import matplotlib.pyplot as plt
+from tkinter import Scale, filedialog
 from tkinter.constants import HORIZONTAL
 from PIL import ImageTk, Image
 
@@ -18,6 +19,7 @@ class MainApp(tk.Frame):
         parent.geometry('200x300')
 
         self.image_data = []
+        self.modified_image_data = []
 
         open_file = tk.Button(
             parent,
@@ -68,14 +70,22 @@ class MainApp(tk.Frame):
         gamma_control = tk.Scale(
             parent,
             variable=self.gamma_value,
-            from_=.1,
-            to=5,
-            resolution=.1,
+            from_=1,
+            to=200,
             orient=HORIZONTAL,
             command=self.apply_changes
         )
-        gamma_control.set(1)
+        gamma_control.set(100)
         gamma_control.pack()
+
+        hist_controls = tk.Button(
+            parent,
+            text='Show Histogram',
+            padx=10, pady=5,
+            fg='white', bg='#263D42',
+            command=self.show_histogram
+        )
+        hist_controls.pack()
 
         apply = tk.Button(
             parent,
@@ -107,6 +117,7 @@ class MainApp(tk.Frame):
 
         try:
             self.image_data = self.get_image_array(filename, 'L')
+            self.modified_image_data = self.image_data
             self.image_displayer.deiconify() # Unhide window when opening a new file
             self.update_canvas(self.image_data)
         except Exception as e:
@@ -118,18 +129,18 @@ class MainApp(tk.Frame):
         if(len(self.image_data) == 0):
             return
         
-        modified_image_data = self.image_data
+        self.modified_image_data = self.image_data
 
         if(self.is_negative.get()):
-            modified_image_data = 1 - modified_image_data
+            self.modified_image_data = 1 - self.modified_image_data
         
         if(self.apply_log.get()):
-            modified_image_data = np.log2(1 + modified_image_data)
+            self.modified_image_data = np.log2(1 + self.modified_image_data)
         
-        modified_image_data = modified_image_data ** self.gamma_value.get()
-        modified_image_data = modified_image_data * self.brightness.get() / 100
+        self.modified_image_data = self.modified_image_data ** (self.gamma_value.get() / 100)
+        self.modified_image_data = self.modified_image_data * self.brightness.get() / 100
 
-        self.update_canvas(modified_image_data)
+        self.update_canvas(self.modified_image_data)
         
     def update_canvas(self, image_data: np.ndarray):
         img = ImageTk.PhotoImage(self.array_to_image(image_data))
@@ -139,12 +150,17 @@ class MainApp(tk.Frame):
     def on_close_display(self):
         self.image_displayer.withdraw()
 
+    def show_histogram(self):
+        hist = self.array_to_image(self.modified_image_data).histogram()
+        plt.bar(np.arange(len(hist)), hist, width=1)
+        plt.show()
+
     def get_image_array(self, filename: str, mode: str) -> np.ndarray:
         with Image.open(filename) as im:
             img_array = np.asarray(im.convert(mode))
             return img_array / 255
     
-    def array_to_image(self, array: np.ndarray) -> Image:
+    def array_to_image(self, array: np.ndarray) -> Image.Image:
         scaled_array = np.uint8(np.clip(array * 255, 0, 255))
         return Image.fromarray(scaled_array)
 
