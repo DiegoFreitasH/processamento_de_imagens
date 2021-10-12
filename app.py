@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from tkinter import Scale, filedialog
 from tkinter.constants import HORIZONTAL
 from PIL import ImageTk, Image
+from numpy.core.fromnumeric import cumsum
 
 IMG_DIRECTORY = '~/UFC/processamento_imagens/processing_project/img'
 root = tk.Tk()
@@ -16,10 +17,9 @@ class MainApp(tk.Frame):
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
         self.parent.title('Controls')
-        parent.geometry('200x300')
 
-        self.image_data = []
-        self.modified_image_data = []
+        self.image_data = np.array([])
+        self.modified_image_data = np.array([])
 
         open_file = tk.Button(
             parent,
@@ -78,6 +78,15 @@ class MainApp(tk.Frame):
         gamma_control.set(100)
         gamma_control.pack()
 
+        equalize_controls = tk.Button(
+            parent,
+            text='Equalize',
+            padx=10, pady=5,
+            fg='white', bg='#263D42',
+            command=self.equalize_histogram
+        )
+        equalize_controls.pack()
+
         hist_controls = tk.Button(
             parent,
             text='Show Histogram',
@@ -87,14 +96,14 @@ class MainApp(tk.Frame):
         )
         hist_controls.pack()
 
-        apply = tk.Button(
+        reset = tk.Button(
             parent,
-            text='Apply',
+            text='Reset Modifications',
             padx=10, pady=5,
             fg='white', bg='#263D42',
-            command=self.apply_changes
+            command=self.reset_modifications
         )
-        apply.pack(padx=10, pady=5)
+        reset.pack(padx=20, pady=5)
 
         self.image_displayer = tk.Toplevel(self.parent)
         self.image_displayer.title('Image Displayer')
@@ -147,22 +156,40 @@ class MainApp(tk.Frame):
         self.canvas.configure(image=img)
         self.canvas.image = img
     
+    def reset_modifications(self):
+        self.modified_image_data = self.image_data
+        self.update_canvas(self.modified_image_data)
+
     def on_close_display(self):
         self.image_displayer.withdraw()
 
     def show_histogram(self):
-        hist = self.array_to_image(self.modified_image_data).histogram()
-        plt.bar(np.arange(len(hist)), hist, width=1)
+        plt.hist(self.array_to_image(self.modified_image_data).getdata(), bins=40)
         plt.show()
+    
+    def equalize_histogram(self):
+        pixel_matrix = self.to_bytes_matrix(self.modified_image_data)
+        image = Image.fromarray(pixel_matrix)
+        
+        hist = np.array(image.histogram())
+        hist_prob = hist / (image.width * image.height)
+        cum_hist = np.cumsum(hist_prob)
+        
+        color_lookup = np.uint8(np.clip(cum_hist * 255, 0, 255))
+        
+        self.modified_image_data = np.array([[color_lookup[v]/255 for v in row] for row in pixel_matrix])
+        self.update_canvas(self.modified_image_data)
 
     def get_image_array(self, filename: str, mode: str) -> np.ndarray:
         with Image.open(filename) as im:
             img_array = np.asarray(im.convert(mode))
             return img_array / 255
-    
+
+    def to_bytes_matrix(self, image_data: np.ndarray) -> np.ndarray:
+        return np.uint8(np.clip(image_data * 255, 0, 255))
+
     def array_to_image(self, array: np.ndarray) -> Image.Image:
-        scaled_array = np.uint8(np.clip(array * 255, 0, 255))
-        return Image.fromarray(scaled_array)
+        return Image.fromarray(self.to_bytes_matrix(array))
 
 app = MainApp(root)
 root.mainloop()
