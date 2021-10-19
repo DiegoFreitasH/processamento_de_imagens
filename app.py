@@ -1,15 +1,36 @@
 import os
-from matplotlib import scale
 import numpy as np
 import tkinter as tk
 import matplotlib.pyplot as plt
 from tkinter import Scale, filedialog
-from tkinter.constants import HORIZONTAL
+from tkinter.constants import CENTER, HORIZONTAL, LEFT, TOP
 from PIL import ImageTk, Image
-from numpy.core.fromnumeric import cumsum
+from numpy.lib.function_base import median
 
 IMG_DIRECTORY = '~/UFC/processamento_imagens/processing_project/img'
 root = tk.Tk()
+
+class Filter():
+    def __init__(self, size, filter_data: np.ndarray = None) -> None:
+        self.size = size
+        self.offset = size // 2
+        self.matrix = filter_data / np.sum(filter_data)
+
+        print(self.matrix)
+
+    
+    def apply(self, i: int, j: int, image_data: np.ndarray) -> float:
+        v = 0
+        w = len(image_data)
+        h = len(image_data[0])
+        for i_off in range(-self.offset, self.offset + 1):
+            for j_off in range(-self.offset, self.offset + 1):
+                x = i + i_off
+                y = j + j_off
+                if(x < 0 or y < 0 or x >= w or y >= h): continue
+                
+                v += image_data[x][y] * self.matrix[i_off+self.offset][j_off+self.offset]
+        return v    
 
 class MainApp(tk.Frame):
 
@@ -19,7 +40,7 @@ class MainApp(tk.Frame):
         self.parent.title('Controls')
 
         self.image_data = np.array([])
-        self.modified_image_data = np.array([])
+        self.modified_image_data = self.image_data
 
         open_file = tk.Button(
             parent,
@@ -96,14 +117,14 @@ class MainApp(tk.Frame):
         )
         hist_controls.pack()
 
-        reset = tk.Button(
+        filter_controls = tk.Button(
             parent,
-            text='Reset Modifications',
+            text='Apply Filter',
             padx=10, pady=5,
             fg='white', bg='#263D42',
-            command=self.reset_modifications
+            command=self.apply_filter
         )
-        reset.pack(padx=20, pady=5)
+        filter_controls.pack()
 
         self.image_displayer = tk.Toplevel(self.parent)
         self.image_displayer.title('Image Displayer')
@@ -116,7 +137,13 @@ class MainApp(tk.Frame):
         self.canvas.pack()
 
         self.image_displayer.withdraw() # Hides display at startup
-    
+
+        filter_size = 3
+        self.default_filter = Filter(
+            filter_size, 
+            np.ones((filter_size,filter_size)),
+        )
+
     def open_file(self):
         filename = filedialog.askopenfilename(
             initialdir=IMG_DIRECTORY, 
@@ -152,13 +179,10 @@ class MainApp(tk.Frame):
         self.update_canvas(self.modified_image_data)
         
     def update_canvas(self, image_data: np.ndarray):
-        img = ImageTk.PhotoImage(self.array_to_image(image_data))
-        self.canvas.configure(image=img)
-        self.canvas.image = img
-    
-    def reset_modifications(self):
-        self.modified_image_data = self.image_data
-        self.update_canvas(self.modified_image_data)
+        img = self.array_to_image(image_data)
+        photo = ImageTk.PhotoImage(img)
+        self.canvas.configure(image=photo)
+        self.canvas.image = photo
 
     def on_close_display(self):
         self.image_displayer.withdraw()
@@ -176,9 +200,23 @@ class MainApp(tk.Frame):
         cum_hist = np.cumsum(hist_prob)
         
         color_lookup = np.uint8(np.clip(cum_hist * 255, 0, 255))
+        self.image_data = np.array([[color_lookup[v]/255 for v in row] for row in pixel_matrix])
+        self.modified_image_data = self.image_data
         
-        self.modified_image_data = np.array([[color_lookup[v]/255 for v in row] for row in pixel_matrix])
         self.update_canvas(self.modified_image_data)
+
+    def apply_filter(self):
+        temp = np.empty_like(self.modified_image_data)
+        h = len(self.modified_image_data)
+        w = len(self.modified_image_data[0])
+        
+        for i in range(h):
+            for j in range(w):
+                temp[i][j] = self.default_filter.apply(i,j,self.modified_image_data)
+        
+        self.image_data = temp
+        self.modified_image_data = self.image_data
+        self.update_canvas(self.image_data)
 
     def get_image_array(self, filename: str, mode: str) -> np.ndarray:
         with Image.open(filename) as im:
