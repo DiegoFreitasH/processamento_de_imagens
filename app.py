@@ -20,6 +20,14 @@ class Filter():
 
     
     def apply(self, i: int, j: int, image_data: np.ndarray) -> float:
+        pass
+
+class ConvFilter(Filter):
+
+    def apply(self, i: int, j: int, image_data: np.ndarray) -> float:
+        '''
+        Acumulates the value of neighborhood weighted by filter_data
+        '''
         v = 0
         w = len(image_data)
         h = len(image_data[0])
@@ -30,7 +38,24 @@ class Filter():
                 if(x < 0 or y < 0 or x >= w or y >= h): continue
                 
                 v += image_data[x][y] * self.matrix[i_off+self.offset][j_off+self.offset]
-        return v    
+        return v
+
+class MedianFilter(Filter):
+    def apply(self, i: int, j: int, image_data: np.ndarray) -> float:
+        '''
+        Get median value of neighborhood
+        '''
+        kernel_values = []
+        w = len(image_data)
+        h = len(image_data[0])
+        for i_off in range(-self.offset, self.offset + 1):
+            for j_off in range(-self.offset, self.offset + 1):
+                x = i + i_off
+                y = j + j_off
+                if(x < 0 or y < 0 or x >= w or y >= h): continue
+                kernel_values.append(image_data[x][y])
+        
+        return np.median(np.array(kernel_values))
 
 class MainApp(tk.Frame):
 
@@ -138,8 +163,8 @@ class MainApp(tk.Frame):
 
         self.image_displayer.withdraw() # Hides display at startup
 
-        filter_size = 3
-        self.default_filter = Filter(
+        filter_size = 5
+        self.default_filter = MedianFilter(
             filter_size, 
             np.ones((filter_size,filter_size)),
         )
