@@ -5,57 +5,10 @@ import matplotlib.pyplot as plt
 from tkinter import Scale, filedialog
 from tkinter.constants import CENTER, HORIZONTAL, LEFT, TOP
 from PIL import ImageTk, Image
-from numpy.lib.function_base import median
+from image_filter import MedianFilter, LaplacianFilter
 
 IMG_DIRECTORY = '~/UFC/processamento_imagens/processing_project/img'
 root = tk.Tk()
-
-class Filter():
-    def __init__(self, size, filter_data: np.ndarray = None) -> None:
-        self.size = size
-        self.offset = size // 2
-        self.matrix = filter_data / np.sum(filter_data)
-
-        print(self.matrix)
-
-    
-    def apply(self, i: int, j: int, image_data: np.ndarray) -> float:
-        pass
-
-class ConvFilter(Filter):
-
-    def apply(self, i: int, j: int, image_data: np.ndarray) -> float:
-        '''
-        Acumulates the value of neighborhood weighted by filter_data
-        '''
-        v = 0
-        w = len(image_data)
-        h = len(image_data[0])
-        for i_off in range(-self.offset, self.offset + 1):
-            for j_off in range(-self.offset, self.offset + 1):
-                x = i + i_off
-                y = j + j_off
-                if(x < 0 or y < 0 or x >= w or y >= h): continue
-                
-                v += image_data[x][y] * self.matrix[i_off+self.offset][j_off+self.offset]
-        return v
-
-class MedianFilter(Filter):
-    def apply(self, i: int, j: int, image_data: np.ndarray) -> float:
-        '''
-        Get median value of neighborhood
-        '''
-        kernel_values = []
-        w = len(image_data)
-        h = len(image_data[0])
-        for i_off in range(-self.offset, self.offset + 1):
-            for j_off in range(-self.offset, self.offset + 1):
-                x = i + i_off
-                y = j + j_off
-                if(x < 0 or y < 0 or x >= w or y >= h): continue
-                kernel_values.append(image_data[x][y])
-        
-        return np.median(np.array(kernel_values))
 
 class MainApp(tk.Frame):
 
@@ -124,6 +77,39 @@ class MainApp(tk.Frame):
         gamma_control.set(100)
         gamma_control.pack()
 
+        tk.Label(parent, text='Filter Size').pack()
+        self.filter_size = tk.IntVar() 
+        filter_size_controls = tk.Scale(
+            parent,
+            from_=3,
+            to=9,
+            resolution=1,
+            variable=self.filter_size,
+            orient=HORIZONTAL,
+        )
+        filter_size_controls.set(3)
+        filter_size_controls.pack()
+        tk.Button(
+            parent,
+            text='Apply Median Filter',
+            padx=10, pady=5,
+            fg='white', bg='#263D42',
+            command=self.apply_median_filter
+        ).pack()
+        tk.Button(
+            parent,
+            text='Apply Laplacian',
+            padx=10, pady=5,
+            fg='white', bg='#263D42',
+            command=self.apply_laplacian
+        ).pack()
+        tk.Button(
+            parent,
+            text='Apply Sharpen Laplacian',
+            padx=10, pady=5,
+            fg='white', bg='#263D42',
+            command=self.shapen_laplacian
+        ).pack()
         equalize_controls = tk.Button(
             parent,
             text='Equalize',
@@ -142,15 +128,6 @@ class MainApp(tk.Frame):
         )
         hist_controls.pack()
 
-        filter_controls = tk.Button(
-            parent,
-            text='Apply Filter',
-            padx=10, pady=5,
-            fg='white', bg='#263D42',
-            command=self.apply_filter
-        )
-        filter_controls.pack()
-
         self.image_displayer = tk.Toplevel(self.parent)
         self.image_displayer.title('Image Displayer')
         
@@ -163,11 +140,8 @@ class MainApp(tk.Frame):
 
         self.image_displayer.withdraw() # Hides display at startup
 
-        filter_size = 5
-        self.default_filter = MedianFilter(
-            filter_size, 
-            np.ones((filter_size,filter_size)),
-        )
+        filter_size = 3
+        self.default_filter = LaplacianFilter()
 
     def open_file(self):
         filename = filedialog.askopenfilename(
@@ -184,7 +158,6 @@ class MainApp(tk.Frame):
         except Exception as e:
             print('File Error:', e)
             print('Filename:', filename)
-
 
     def apply_changes(self, *args):
         if(len(self.image_data) == 0):
@@ -230,18 +203,35 @@ class MainApp(tk.Frame):
         
         self.update_canvas(self.modified_image_data)
 
-    def apply_filter(self):
-        temp = np.empty_like(self.modified_image_data)
+    def apply_laplacian(self):
+        self.image_data = self.apply_filter(LaplacianFilter())
+        self.modified_image_data = self.image_data
+        self.update_canvas(self.image_data)
+    
+    def apply_median_filter(self):
+        self.image_data = self.apply_filter(MedianFilter(self.filter_size.get()))
+        self.modified_image_data = self.image_data
+        self.update_canvas(self.image_data)
+
+    def shapen_laplacian(self):
+        borders_img = self.apply_filter(LaplacianFilter())
+        self.image_data = self.image_data + borders_img
+        self.modified_image_data = self.image_data
+        self.update_canvas(self.image_data)
+
+    def apply_filter(self, f):
+        filtered_img = np.empty_like(self.modified_image_data)
         h = len(self.modified_image_data)
         w = len(self.modified_image_data[0])
         
         for i in range(h):
             for j in range(w):
-                temp[i][j] = self.default_filter.apply(i,j,self.modified_image_data)
+                filtered_img[i][j] = f.apply(i,j,self.modified_image_data)
         
-        self.image_data = temp
-        self.modified_image_data = self.image_data
-        self.update_canvas(self.image_data)
+        return filtered_img
+    
+    def normalize_image(self, image_data: np.ndarray) -> np.ndarray:
+        return (image_data + np.abs(np.min(image_data))) / np.max(image_data)
 
     def get_image_array(self, filename: str, mode: str) -> np.ndarray:
         with Image.open(filename) as im:
