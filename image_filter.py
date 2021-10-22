@@ -58,3 +58,12 @@ class LaplacianFilter(ConvFilter):
             [1,-4, 1],
             [0, 1, 0]
         ]), normalize=False)
+
+class GaussianFilter(ConvFilter):
+    def __init__(self) -> None:
+        super().__init__(3, np.array([
+            [1, 2, 1],
+            [2, 8, 2],
+            [1, 2, 1]
+        ]), normalize=True)
+        print(self.kernel_weigths)

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from tkinter import Scale, filedialog
 from tkinter.constants import CENTER, HORIZONTAL, LEFT, TOP
 from PIL import ImageTk, Image
-from image_filter import MedianFilter, LaplacianFilter
+from image_filter import GaussianFilter, MedianFilter, LaplacianFilter
 
 IMG_DIRECTORY = '~/UFC/processamento_imagens/processing_project/img'
 root = tk.Tk()
@@ -98,10 +98,17 @@ class MainApp(tk.Frame):
         ).pack()
         tk.Button(
             parent,
-            text='Apply Laplacian',
+            text='Apply Laplacian Filter',
             padx=10, pady=5,
             fg='white', bg='#263D42',
             command=self.apply_laplacian
+        ).pack()
+        tk.Button(
+            parent,
+            text='Apply Gaussian Filter',
+            padx=10, pady=5,
+            fg='white', bg='#263D42',
+            command=self.apply_gaussian_filter
         ).pack()
         tk.Button(
             parent,
@@ -109,6 +116,13 @@ class MainApp(tk.Frame):
             padx=10, pady=5,
             fg='white', bg='#263D42',
             command=self.shapen_laplacian
+        ).pack()
+        tk.Button(
+            parent,
+            text='Apply Sharpen Gaussian',
+            padx=10, pady=5,
+            fg='white', bg='#263D42',
+            command=self.sharpen_gaussian
         ).pack()
         equalize_controls = tk.Button(
             parent,
@@ -212,11 +226,22 @@ class MainApp(tk.Frame):
         self.image_data = self.apply_filter(MedianFilter(self.filter_size.get()))
         self.modified_image_data = self.image_data
         self.update_canvas(self.image_data)
+    
+    def apply_gaussian_filter(self):
+        self.image_data = self.apply_filter(GaussianFilter())
+        self.modified_image_data = self.image_data
+        self.update_canvas(self.image_data)
 
     def shapen_laplacian(self):
-        borders_img = self.apply_filter(LaplacianFilter())
-        self.image_data = self.image_data + borders_img
-        self.modified_image_data = self.image_data
+        mask = self.apply_filter(LaplacianFilter())
+        self.modified_image_data = self.modified_image_data + mask
+        self.image_data = self.modified_image_data 
+        self.update_canvas(self.image_data)
+
+    def sharpen_gaussian(self):
+        mask = self.apply_filter(GaussianFilter())
+        self.modified_image_data = self.modified_image_data + 1.5*(self.modified_image_data - mask)
+        self.image_data = self.modified_image_data 
         self.update_canvas(self.image_data)
 
     def apply_filter(self, f):
