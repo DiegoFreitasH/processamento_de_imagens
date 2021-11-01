@@ -2,8 +2,8 @@ import os
 import numpy as np
 import tkinter as tk
 import matplotlib.pyplot as plt
-from tkinter import Scale, filedialog
-from tkinter.constants import CENTER, HORIZONTAL, LEFT, TOP
+from tkinter import Menu, Scale, filedialog
+from tkinter.constants import HORIZONTAL
 from PIL import ImageTk, Image
 from image_filter import GaussianFilter, MedianFilter, LaplacianFilter
 
@@ -20,14 +20,24 @@ class MainApp(tk.Frame):
         self.image_data = np.array([])
         self.modified_image_data = self.image_data
 
-        open_file = tk.Button(
-            parent,
-            text='Open Image',
-            padx=10, pady=5,
-            fg='white', bg='#263D42',
-            command=self.open_file
-        )
-        open_file.pack(padx=10, pady=5)
+        menubar = tk.Menu()
+        filemenu = tk.Menu(menubar, tearoff=0)
+        filemenu.add_command(label='Open', command=self.open_file)
+        filemenu.add_command(label='Save', command=lambda: print('save'))
+        menubar.add_cascade(label='File', menu=filemenu)
+
+        filtermenu = tk.Menu(menubar, tearoff=0)
+        filtermenu.add_command(label='Gaussian Filter', command=self.apply_gaussian_filter)
+        filtermenu.add_command(label='Laplacian Filter', command=self.apply_laplacian)
+        filtermenu.add_command(label='Median Filter', command=self.apply_median_filter)
+        menubar.add_cascade(label='Filter', menu=filtermenu)
+
+        sharpenmenu = tk.Menu(menubar, tearoff=0)
+        sharpenmenu.add_command(label='Gaussian Filter', command=self.sharpen_gaussian)
+        sharpenmenu.add_command(label='Laplacian Filter', command=self.sharpen_laplacian)
+        menubar.add_cascade(label='Sharpen', menu=sharpenmenu)
+        
+        self.parent.config(menu=menubar)
         
         tk.Label(parent, text='Brightness').pack()
         self.brightness = tk.DoubleVar()
@@ -89,41 +99,6 @@ class MainApp(tk.Frame):
         )
         filter_size_controls.set(3)
         filter_size_controls.pack()
-        tk.Button(
-            parent,
-            text='Apply Median Filter',
-            padx=10, pady=5,
-            fg='white', bg='#263D42',
-            command=self.apply_median_filter
-        ).pack()
-        tk.Button(
-            parent,
-            text='Apply Laplacian Filter',
-            padx=10, pady=5,
-            fg='white', bg='#263D42',
-            command=self.apply_laplacian
-        ).pack()
-        tk.Button(
-            parent,
-            text='Apply Gaussian Filter',
-            padx=10, pady=5,
-            fg='white', bg='#263D42',
-            command=self.apply_gaussian_filter
-        ).pack()
-        tk.Button(
-            parent,
-            text='Apply Sharpen Laplacian',
-            padx=10, pady=5,
-            fg='white', bg='#263D42',
-            command=self.shapen_laplacian
-        ).pack()
-        tk.Button(
-            parent,
-            text='Apply Sharpen Gaussian',
-            padx=10, pady=5,
-            fg='white', bg='#263D42',
-            command=self.sharpen_gaussian
-        ).pack()
         equalize_controls = tk.Button(
             parent,
             text='Equalize',
@@ -232,7 +207,7 @@ class MainApp(tk.Frame):
         self.modified_image_data = self.image_data
         self.update_canvas(self.image_data)
 
-    def shapen_laplacian(self):
+    def sharpen_laplacian(self):
         mask = self.apply_filter(LaplacianFilter())
         self.modified_image_data = self.modified_image_data + mask
         self.image_data = self.modified_image_data 
