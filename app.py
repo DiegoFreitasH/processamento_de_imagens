@@ -2,12 +2,13 @@ import os
 import numpy as np
 import tkinter as tk
 import matplotlib.pyplot as plt
-from tkinter import Menu, Scale, filedialog
+from tkinter import Scale, filedialog
 from tkinter.constants import HORIZONTAL
 from PIL import ImageTk, Image
 from image_filter import GaussianFilter, MedianFilter, LaplacianFilter
 
 IMG_DIRECTORY = '~/UFC/processamento_imagens/processing_project/img'
+filetypes = (('all files', '*.*'), ('JPG images', '*.jpeg'), ('PNG images', '*.png'), ('Tif images', '*.tif'), ('BMP Images', '*.bmp'))
 root = tk.Tk()
 
 class MainApp(tk.Frame):
@@ -23,7 +24,7 @@ class MainApp(tk.Frame):
         menubar = tk.Menu()
         filemenu = tk.Menu(menubar, tearoff=0)
         filemenu.add_command(label='Open', command=self.open_file)
-        filemenu.add_command(label='Save', command=lambda: print('save'))
+        filemenu.add_command(label='Save', command=self.save_image)
         menubar.add_cascade(label='File', menu=filemenu)
 
         filtermenu = tk.Menu(menubar, tearoff=0)
@@ -33,10 +34,14 @@ class MainApp(tk.Frame):
         menubar.add_cascade(label='Filter', menu=filtermenu)
 
         sharpenmenu = tk.Menu(menubar, tearoff=0)
-        sharpenmenu.add_command(label='Gaussian Filter', command=self.sharpen_gaussian)
-        sharpenmenu.add_command(label='Laplacian Filter', command=self.sharpen_laplacian)
+        sharpenmenu.add_command(label='Gaussian Sharpen', command=self.sharpen_gaussian)
+        sharpenmenu.add_command(label='Laplacian Sharpen', command=self.sharpen_laplacian)
         menubar.add_cascade(label='Sharpen', menu=sharpenmenu)
-        
+
+        frequencymenu = tk.Menu(menubar, tearoff=0)
+        frequencymenu.add_command(label='Fast Fourier Transform', command=self.fft)
+        menubar.add_cascade(label='Frequency', menu=frequencymenu)
+
         self.parent.config(menu=menubar)
         
         tk.Label(parent, text='Brightness').pack()
@@ -87,17 +92,15 @@ class MainApp(tk.Frame):
         gamma_control.set(100)
         gamma_control.pack()
 
-        tk.Label(parent, text='Filter Size').pack()
+        tk.Label(parent, text='Filter Size').pack(expand=False)
         self.filter_size = tk.IntVar() 
-        filter_size_controls = tk.Scale(
+        filter_sizes = [3, 5, 7, 9]
+        filter_size_controls = tk.OptionMenu(
             parent,
-            from_=3,
-            to=9,
-            resolution=1,
-            variable=self.filter_size,
-            orient=HORIZONTAL,
+            self.filter_size,
+            *filter_sizes
         )
-        filter_size_controls.set(3)
+        self.filter_size.set(3)
         filter_size_controls.pack()
         equalize_controls = tk.Button(
             parent,
@@ -136,7 +139,7 @@ class MainApp(tk.Frame):
         filename = filedialog.askopenfilename(
             initialdir=IMG_DIRECTORY, 
             title="Select File",
-            filetypes=(('all files', '*.*'), ('JPG images', '*.jpeg'), ('Tif images', '*.tif'))
+            filetypes=filetypes
         )
 
         try:
@@ -147,6 +150,18 @@ class MainApp(tk.Frame):
         except Exception as e:
             print('File Error:', e)
             print('Filename:', filename)
+
+    def save_image(self):
+        if len(self.modified_image_data) == 0:
+            return
+
+        path = filedialog.asksaveasfilename(
+            initialdir=IMG_DIRECTORY,
+            title='Save as ...',
+            filetypes=filetypes
+        )
+
+        self.array_to_image(self.modified_image_data).save(path)
 
     def apply_changes(self, *args):
         if(len(self.image_data) == 0):
@@ -209,7 +224,8 @@ class MainApp(tk.Frame):
 
     def sharpen_laplacian(self):
         mask = self.apply_filter(LaplacianFilter())
-        self.modified_image_data = self.modified_image_data + mask
+
+        self.modified_image_data = self.modified_image_data + 1.5*mask
         self.image_data = self.modified_image_data 
         self.update_canvas(self.image_data)
 
@@ -230,8 +246,22 @@ class MainApp(tk.Frame):
         
         return filtered_img
     
+    def fft(self):
+        fft_result = np.fft.fft2(self.modified_image_data)
+        fft_shift = np.fft.fftshift(fft_result)
+        # Display options
+        fft_display = tk.Toplevel(self.parent)
+        fft_display.title('FFT Display')
+        img = self.array_to_image(1 - self.normalize_image(np.clip(np.real(fft_shift), 0, 100)))
+        photo = ImageTk.PhotoImage(img)
+        canvas = tk.Label(fft_display, image=photo)
+        canvas.img = photo
+        canvas.pack()
+
     def normalize_image(self, image_data: np.ndarray) -> np.ndarray:
-        return (image_data + np.abs(np.min(image_data))) / np.max(image_data)
+        minv = np.abs(np.min(image_data))
+        maxv = np.max(image_data)
+        return (image_data + minv) / (maxv + minv)
 
     def get_image_array(self, filename: str, mode: str) -> np.ndarray:
         with Image.open(filename) as im:
