@@ -38,25 +38,21 @@ class MedianFilter(Filter):
         '''
         Get median value of neighborhood
         '''
-        kernel_values = []
         w = len(image_data)
         h = len(image_data[0])
-        for i_off in range(-self.offset, self.offset + 1):
-            for j_off in range(-self.offset, self.offset + 1):
-                x = i + i_off
-                y = j + j_off
-                if(x < 0 or y < 0 or x >= w or y >= h): continue
-                kernel_values.append(image_data[x][y])
-        
-        return np.median(np.array(kernel_values))
+        minx, maxx = max(i - self.offset, 0), min(i + self.offset + 1, w)
+        miny, maxy = max(j - self.offset, 0), min(j + self.offset + 1, h)
+
+        return np.median(image_data[minx:maxx, miny:maxy])
+   
     
 class LaplacianFilter(ConvFilter):
 
     def __init__(self) -> None:
         super().__init__(3, np.array([
-            [0, 1, 0],
-            [1,-4, 1],
-            [0, 1, 0]
+            [1, 1, 1],
+            [1,-8, 1],
+            [1, 1, 1]
         ]), normalize=False)
 
 class GaussianFilter(ConvFilter):
@@ -66,4 +62,3 @@ class GaussianFilter(ConvFilter):
             [2, 8, 2],
             [1, 2, 1]
         ]), normalize=True)
-        print(self.kernel_weigths)
