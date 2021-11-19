@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 from tkinter import Scale, filedialog
 from tkinter.constants import HORIZONTAL
 from PIL import ImageTk, Image
-from image_filter import GaussianFilter, MedianFilter, LaplacianFilter
+from image_filter import ContraharmonicFilter, FrequencyFilter, GaussianFilter, GeometricFilter, HarmonicFilter, MedianFilter, LaplacianFilter
+from paint import Paint
 
 IMG_DIRECTORY = '~/UFC/processamento_imagens/processing_project/img'
 filetypes = (('all files', '*.*'), ('JPG images', '*.jpeg'), ('PNG images', '*.png'), ('Tif images', '*.tif'), ('BMP Images', '*.bmp'))
@@ -28,9 +29,12 @@ class MainApp(tk.Frame):
         menubar.add_cascade(label='File', menu=filemenu)
 
         filtermenu = tk.Menu(menubar, tearoff=0)
-        filtermenu.add_command(label='Gaussian Filter', command=self.apply_gaussian_filter)
-        filtermenu.add_command(label='Laplacian Filter', command=self.apply_laplacian)
-        filtermenu.add_command(label='Median Filter', command=self.apply_median_filter)
+        filtermenu.add_command(label='Gaussian Filter', command=self.create_filter_callback(GaussianFilter))
+        filtermenu.add_command(label='Laplacian Filter', command=self.create_filter_callback(LaplacianFilter))
+        filtermenu.add_command(label='Median Filter', command=self.create_filter_callback(MedianFilter))
+        filtermenu.add_command(label='Geometric Filter', command=self.create_filter_callback(GeometricFilter))
+        filtermenu.add_command(label='Harmonic Filter', command=self.create_filter_callback(HarmonicFilter))
+        filtermenu.add_command(label='Contraharmonic Filter', command=self.create_filter_callback(ContraharmonicFilter))
         menubar.add_cascade(label='Filter', menu=filtermenu)
 
         sharpenmenu = tk.Menu(menubar, tearoff=0)
@@ -39,7 +43,8 @@ class MainApp(tk.Frame):
         menubar.add_cascade(label='Sharpen', menu=sharpenmenu)
 
         frequencymenu = tk.Menu(menubar, tearoff=0)
-        frequencymenu.add_command(label='Fast Fourier Transform', command=self.fft)
+        frequencymenu.add_command(label='Fast Fourier Transform', command=self.edit_image_frequency)
+        frequencymenu.add_command(label='Frequency Filter', command=self.frequency_filter)
         menubar.add_cascade(label='Frequency', menu=frequencymenu)
 
         self.parent.config(menu=menubar)
@@ -102,6 +107,16 @@ class MainApp(tk.Frame):
         )
         self.filter_size.set(3)
         filter_size_controls.pack()
+        self.frequency_filter_size = tk.IntVar()
+        frequency_radius_controls = tk.Scale(
+            parent,
+            variable=self.frequency_filter_size,
+            from_=10,
+            to=50,
+            orient=HORIZONTAL
+        )
+        self.frequency_filter_size.set(20)
+        frequency_radius_controls.pack()
         equalize_controls = tk.Button(
             parent,
             text='Equalize',
@@ -132,9 +147,6 @@ class MainApp(tk.Frame):
 
         self.image_displayer.withdraw() # Hides display at startup
 
-        filter_size = 3
-        self.default_filter = LaplacianFilter()
-
     def open_file(self):
         filename = filedialog.askopenfilename(
             initialdir=IMG_DIRECTORY, 
@@ -163,7 +175,7 @@ class MainApp(tk.Frame):
 
         self.array_to_image(self.modified_image_data).save(path)
 
-    def apply_changes(self, *args):
+    def apply_changes(self, event):
         if(len(self.image_data) == 0):
             return
         
@@ -207,21 +219,6 @@ class MainApp(tk.Frame):
         
         self.update_canvas(self.modified_image_data)
 
-    def apply_laplacian(self):
-        self.image_data = self.apply_filter(LaplacianFilter())
-        self.modified_image_data = self.image_data
-        self.update_canvas(self.image_data)
-    
-    def apply_median_filter(self):
-        self.image_data = self.apply_filter(MedianFilter(self.filter_size.get()))
-        self.modified_image_data = self.image_data
-        self.update_canvas(self.image_data)
-    
-    def apply_gaussian_filter(self):
-        self.image_data = self.apply_filter(GaussianFilter())
-        self.modified_image_data = self.image_data
-        self.update_canvas(self.image_data)
-
     def sharpen_laplacian(self):
         mask = self.apply_filter(LaplacianFilter())
 
@@ -235,28 +232,48 @@ class MainApp(tk.Frame):
         self.image_data = self.modified_image_data 
         self.update_canvas(self.image_data)
 
+    def create_filter_callback(self, filter_obj):
+
+        def filter_callback():            
+            self.image_data = self.apply_filter(filter_obj(self.filter_size.get()))
+            self.modified_image_data = self.image_data
+            self.update_canvas(self.image_data)
+        
+        return filter_callback
+
     def apply_filter(self, f):
         filtered_img = np.empty_like(self.modified_image_data)
         h = len(self.modified_image_data)
         w = len(self.modified_image_data[0])
-        
+
         for i in range(h):
             for j in range(w):
                 filtered_img[i][j] = f.apply(i,j,self.modified_image_data)
         
         return filtered_img
     
-    def fft(self):
-        fft_result = np.fft.fft2(self.modified_image_data)
-        fft_shift = np.fft.fftshift(fft_result)
+    def get_fft_from_image(self, image: np.ndarray) -> np.ndarray:
+        return np.fft.fftshift(np.fft.fft2(image))
+    
+    def get_image_from_fft(self, fft: np.ndarray) -> np.ndarray:
+        return np.real(np.fft.ifft2(np.fft.ifftshift(fft))) 
+
+    # Create apply custom image frequency
+    def edit_image_frequency(self):
+        frequency = self.get_fft_from_image(self.modified_image_data)
         # Display options
-        fft_display = tk.Toplevel(self.parent)
-        fft_display.title('FFT Display')
-        img = self.array_to_image(1 - self.normalize_image(np.clip(np.real(fft_shift), 0, 100)))
-        photo = ImageTk.PhotoImage(img)
-        canvas = tk.Label(fft_display, image=photo)
-        canvas.img = photo
-        canvas.pack()
+        img = self.array_to_image(np.real(frequency))
+        Paint(img, frequency, self)
+
+    def frequency_filter(self):
+        w = len(self.modified_image_data)
+        h = len(self.modified_image_data[0])
+        f = FrequencyFilter(self.frequency_filter_size.get(), w, h, True)
+        frequency = self.get_fft_from_image(self.modified_image_data)
+        filtered_frequency = f.apply(frequency)
+        
+        self.modified_image_data = self.get_image_from_fft(filtered_frequency)
+        self.update_canvas(self.modified_image_data)
 
     def normalize_image(self, image_data: np.ndarray) -> np.ndarray:
         minv = np.abs(np.min(image_data))
