@@ -1,11 +1,10 @@
-import os
 import numpy as np
 import tkinter as tk
 import matplotlib.pyplot as plt
-from tkinter import Menu, Scale, filedialog
+from tkinter import Scale, filedialog
 from tkinter.constants import HORIZONTAL
 from PIL import ImageTk, Image
-from image_filter import ContraharmonicFilter, DiskFrequencyFilter, FrequencyFilter, GaussianFilter, GeometricFilter, HarmonicFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
+from image_filter import BoxBlur, ContraharmonicFilter, ConvFilter, ConvFilterEditor, DiskFrequencyFilter, FrequencyFilter, GaussianFilter, GeometricFilter, HarmonicFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
 from paint import Paint
 from curve import CurveEditor
 
@@ -51,9 +50,11 @@ class MainApp(tk.Frame):
 
         editmenu = tk.Menu(menubar, tearoff=0)
         editmenu.add_command(label='Values Curve', command=self.edit_values_curve)
+        editmenu.add_command(label='Convert to Grayscale', command=self.to_greyscale)
         menubar.add_cascade(label='Edit', menu=editmenu)
 
         filtermenu = tk.Menu(menubar, tearoff=0)
+        filtermenu.add_command(label='Box Blur', command=self.create_filter_callback(BoxBlur))
         filtermenu.add_command(label='Gaussian Filter', command=self.create_filter_callback(GaussianFilter))
         filtermenu.add_command(label='Laplacian Filter', command=self.create_filter_callback(LaplacianFilter))
         filtermenu.add_command(label='Median Filter', command=self.create_filter_callback(MedianFilter))
@@ -63,6 +64,8 @@ class MainApp(tk.Frame):
         filtermenu.add_command(label='Sobel X', command=self.create_filter_callback(SobelX, normalize=True))
         filtermenu.add_command(label='Sobel Y', command=self.create_filter_callback(SobelY, normalize=True))
         filtermenu.add_command(label='Non linear border detection', command=self.sobel_border_detection)
+        filtermenu.add_separator()
+        filtermenu.add_command(label='Custom Conv. Filter', command=self.edit_conv_filter)
         menubar.add_cascade(label='Filter', menu=filtermenu)
 
         sharpenmenu = tk.Menu(menubar, tearoff=0)
@@ -193,7 +196,7 @@ class MainApp(tk.Frame):
         )
 
         try:
-            self.image_data = self.get_image_array(filename, 'L')
+            self.image_data, self.color_mode = self.get_image_array(filename)
             self.modified_image_data = self.image_data
             self.image_displayer.deiconify() # Unhide window when opening a new file
             self.update_canvas(self.image_data)
@@ -229,7 +232,14 @@ class MainApp(tk.Frame):
         self.modified_image_data = self.modified_image_data * self.brightness.get() / 100
 
         self.update_canvas(self.modified_image_data)
-        
+
+    def to_greyscale(self):
+        if self.color_mode != "L":
+            self.color_mode = "L"
+            self.image_data = np.mean(self.modified_image_data, axis=2)
+            self.modified_image_data = self.image_data
+            self.update_canvas(self.modified_image_data)
+
     def update_canvas(self, image_data: np.ndarray):
         img = self.array_to_image(image_data)
         img.thumbnail((600,600))
@@ -257,6 +267,9 @@ class MainApp(tk.Frame):
         self.modified_image_data = self.image_data
         
         self.update_canvas(self.modified_image_data)
+
+    def edit_conv_filter(self):
+        ConvFilterEditor(self.filter_size.get(), self)
 
     def edit_values_curve(self):
         x = CurveEditor(self)
@@ -327,6 +340,7 @@ class MainApp(tk.Frame):
         filtered_frequency = f.apply(frequency)
         
         self.modified_image_data = self.get_image_from_fft(filtered_frequency)
+        self.image_data = self.modified_image_data
         self.update_canvas(self.modified_image_data)
     
     def pass_high_filter(self):
@@ -337,6 +351,7 @@ class MainApp(tk.Frame):
         filtered_frequency = f.apply(frequency)
         
         self.modified_image_data = self.get_image_from_fft(filtered_frequency)
+        self.image_data = self.modified_image_data
         self.update_canvas(self.modified_image_data)
 
     def disk_freq_filter(self):
@@ -355,10 +370,10 @@ class MainApp(tk.Frame):
         maxv = np.max(image_data)
         return (image_data + minv) / (maxv + minv)
 
-    def get_image_array(self, filename: str, mode: str) -> np.ndarray:
+    def get_image_array(self, filename: str) -> np.ndarray:
         with Image.open(filename) as im:
-            img_array = np.asarray(im.convert(mode))
-            return img_array / 255
+            img_array = np.asarray(im)
+            return img_array / 255, im.mode
 
     def to_bytes_matrix(self, image_data: np.ndarray) -> np.ndarray:
         return np.uint8(np.clip(image_data * 255, 0, 255))

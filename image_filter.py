@@ -1,5 +1,6 @@
 import numpy as np
-from numpy.core.numeric import convolve
+import tkinter as tk
+from numpy.lib.arraypad import pad
 from scipy import signal
 
 class Filter():
@@ -48,6 +49,10 @@ class ConvFilter(Filter):
                 v += image_data[x][y] * self.kernel_weigths[i_off+self.offset][j_off+self.offset]
         return v
 
+class BoxBlur(ConvFilter):
+    def __init__(self, size: int) -> None:
+        super().__init__(size, np.ones((size, size)))
+
 class LaplacianFilter(ConvFilter):
 
     def __init__(self, size) -> None:
@@ -81,7 +86,6 @@ class SobelY(ConvFilter):
             [1, 2, 1]
         ]), normalize=False)
 
-
 class MedianFilter(NonLinearFilter):
     
     def __init__(self, size):
@@ -106,7 +110,6 @@ class ContraharmonicFilter(NonLinearFilter):
 
     def __init__(self, size) -> None:
         super().__init__(size, lambda arr: np.sum(arr**2) / np.sum(arr))
-
 
 def gkern(kernlen=21, std=3):
     """Returns a 2D Gaussian kernel array."""
@@ -139,9 +142,6 @@ class DiskFrequencyFilter:
         half_h = h//2
         
         assert r2 > r1 
-        
-        Y1, X1 = np.ogrid[-r1:r1:, -r1:r1]
-
         Y2, X2 = np.ogrid[-r2:r2:, -r2:r2]
         dist_from_center2 = np.sqrt(X2**2 + Y2**2)
 
@@ -153,3 +153,46 @@ class DiskFrequencyFilter:
     
     def apply(self, img_data: np.ndarray) -> np.ndarray:
         return self.f * img_data
+
+class ConvFilterEditor:
+
+    def __init__(self, size, app=None):
+        self.root = tk.Toplevel()
+        self.root.title('Conv. filter editor')
+        self.app = app
+        self.size = size
+        offset = 2
+        self.input_cells = []
+        tk.Label(self.root, text='Filter Weights').grid(row=0, column=0, columnspan=self.size)
+        for i in range(self.size):
+            row = []
+            for j in range(self.size):
+                cell_input = tk.Entry(self.root, width=5)
+                cell_input.insert(tk.END, '1.0')
+                cell_input.grid(row=i+offset, column=j, padx=2, pady=2)
+                row.append(cell_input)
+            self.input_cells.append(row)
+        
+        apply_controls = tk.Button(
+            self.root,
+            text='Apply',
+            command=self.apply
+        )
+        apply_controls.grid(row=self.size*i + offset, column=0, columnspan=self.size)
+        
+        self.root.mainloop()
+    
+    def apply(self):
+        try:
+            kernel_weights = [[float(self.input_cells[i][j].get()) for j in range(self.size)] for i in range(self.size)]
+            f = ConvFilter(self.size, np.array(kernel_weights))
+            f_img = self.app.apply_filter(f)
+            self.app.modified_image_data = f_img
+            self.app.image_data = f_img
+            self.app.update_canvas(f_img)
+            self.root.destroy()
+        except Exception as e:
+            print(e)
+
+if __name__ == '__main__':
+    ConvFilterEditor(3)
