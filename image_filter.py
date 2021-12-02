@@ -1,4 +1,6 @@
 import numpy as np
+from numpy.core.numeric import convolve
+from scipy import signal
 
 class Filter():
     def __init__(self, size) -> None:
@@ -62,6 +64,22 @@ class GaussianFilter(ConvFilter):
             [2, 8, 2],
             [1, 2, 1]
         ]), normalize=True)
+    
+class SobelX(ConvFilter):
+    def __init__(self, size: int) -> None:
+        super().__init__(size, np.array([
+            [-1, 0, 1],
+            [-2, 0, 2],
+            [-1, 0, 1]
+        ]), normalize=False)
+    
+class SobelY(ConvFilter):
+    def __init__(self, size: int) -> None:
+        super().__init__(size, np.array([
+            [-1, -2, -1],
+            [0, 0, 0],
+            [1, 2, 1]
+        ]), normalize=False)
 
 
 class MedianFilter(NonLinearFilter):
@@ -89,17 +107,49 @@ class ContraharmonicFilter(NonLinearFilter):
     def __init__(self, size) -> None:
         super().__init__(size, lambda arr: np.sum(arr**2) / np.sum(arr))
 
+
+def gkern(kernlen=21, std=3):
+    """Returns a 2D Gaussian kernel array."""
+    gkern1d = signal.gaussian(kernlen, std=std).reshape(kernlen, 1)
+    gkern2d = np.outer(gkern1d, gkern1d)
+    return gkern2d
+
 class FrequencyFilter:
-    def __init__(self, r: int, w: int, h: int, invert: bool = False) -> None:
+    def __init__(self, r: int, w: int, h: int, invert: bool = False, gauss: bool = False) -> None:
         self.f = np.zeros((w,h))
         half_w = w//2
         half_h = h//2
-        Y, X = np.ogrid[-r:r:, -r:r]
-        dist_from_center = np.sqrt(X**2 + Y**2)
-        mask = dist_from_center <= r
+        if gauss:
+            mask = gkern(kernlen=2*r, std=8)
+        else:
+            Y, X = np.ogrid[-r:r:, -r:r]
+            dist_from_center = np.sqrt(X**2 + Y**2)
+            mask = dist_from_center <= r
         self.f[half_w-r:half_w+r, half_h-r:half_h+r] = mask
 
         if invert:
             self.f = 1 - self.f
+    def apply(self, img_data: np.ndarray) -> np.ndarray:
+        return self.f * img_data
+
+class DiskFrequencyFilter:
+    def __init__(self, r1: int, r2:int, w: int, h: int, invert: bool = False, gauss: bool = False) -> None:
+        self.f = np.zeros((w,h))
+        half_w = w//2
+        half_h = h//2
+        
+        assert r2 > r1 
+        
+        Y1, X1 = np.ogrid[-r1:r1:, -r1:r1]
+
+        Y2, X2 = np.ogrid[-r2:r2:, -r2:r2]
+        dist_from_center2 = np.sqrt(X2**2 + Y2**2)
+
+        mask =  (r1 <= dist_from_center2) & (dist_from_center2 <= r2)
+        self.f[half_w-r2:half_w+r2, half_h-r2:half_h+r2] = mask
+        
+        if invert:
+            self.f = 1 - self.f
+    
     def apply(self, img_data: np.ndarray) -> np.ndarray:
         return self.f * img_data
