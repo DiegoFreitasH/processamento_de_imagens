@@ -14,30 +14,30 @@ class CurveEditor:
 
         tk.Label(self.root, text='X:').grid(column=0, row=1)
         self.input_x = tk.Entry(self.root, width=5)
-        self.input_x.grid(column=1, row=1)
+        self.input_x.grid(column=0, row=1, columnspan=3)
         
         tk.Label(self.root, text='Y:').grid(column=2, row=1)
         self.input_y = tk.Entry(self.root, width=5)
-        self.input_y.grid(column=3, row=1)
+        self.input_y.grid(column=2, row=1, columnspan=3)
 
         self.draw_curve = tk.Button(
             self.root,
             text="Add Point",
             command=self.add_point
         )
-        self.draw_curve.grid(column=1, row=2, columnspan=2)
+        self.draw_curve.grid(column=0, row=2, columnspan=3)
         apply_controls = tk.Button(
             self.root,
             text="Apply",
             command=self.apply
         )
-        apply_controls.grid(column=3, row=2, columnspan=2)
+        apply_controls.grid(column=3, row=12, columnspan=2)
         reset_controls = tk.Button(
             self.root,
             text="Reset",
             command=self.reset
         )
-        reset_controls.grid(column=5, row=2, columnspan=2)
+        reset_controls.grid(column=5, row=12, columnspan=2)
 
         if self.app.color_mode == 'L':
             self.channels = ['Value']
@@ -52,7 +52,7 @@ class CurveEditor:
             *self.channels
         )
         self.active_channel.set('Value')
-        channel_controls.grid(row=1, column=6)
+        channel_controls.grid(row=1, column=4, columnspan=5)
         self.poly = self.get_polynomial_interpolation()
         figure = plt.Figure(figsize=(5,4), dpi=100)
         ax = figure.add_subplot(111)
