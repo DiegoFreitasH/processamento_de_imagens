@@ -39,6 +39,20 @@ class CurveEditor:
         )
         reset_controls.grid(column=5, row=2, columnspan=2)
 
+        if self.app.color_mode == 'L':
+            self.channels = ['Value']
+        elif self.app.color_mode == 'RGB':
+            self.channels = ['Value', 'Red', 'Green', 'Blue']
+
+        tk.Label(self.root, text='Channel:').grid(row=1, column=4, columnspan=2)
+        self.active_channel = tk.StringVar()
+        channel_controls = tk.OptionMenu(
+            self.root,
+            self.active_channel,
+            *self.channels
+        )
+        self.active_channel.set('Value')
+        channel_controls.grid(row=1, column=6)
         self.poly = self.get_polynomial_interpolation()
         figure = plt.Figure(figsize=(5,4), dpi=100)
         ax = figure.add_subplot(111)
@@ -103,9 +117,16 @@ class CurveEditor:
         self.update_curve()
 
     def apply(self):
-        self.app.modified_image_data = self.poly(self.app.modified_image_data)
-        self.app.image_data = self.app.modified_image_data
-        self.app.update_canvas(self.app.modified_image_data)
+        if self.active_channel.get() == 'Value':
+            self.app.modified_image_data = self.poly(self.app.modified_image_data)
+            self.app.image_data = self.app.modified_image_data
+            self.app.update_canvas(self.app.modified_image_data)
+        elif self.app.color_mode == 'RGB':
+            channel = self.channels.index(self.active_channel.get()) - 1
+            self.app.modified_image_data[:,:,channel] = self.poly(self.app.modified_image_data[:,:,channel])
+            self.app.image_data = self.app.modified_image_data
+            self.app.update_canvas(self.app.modified_image_data)
+        
         self.root.destroy()
 
 if '__name__' == 'main': 

@@ -1,11 +1,11 @@
 import numpy as np
 import tkinter as tk
 from tkinter import Scale, filedialog
-from tkinter.constants import HORIZONTAL, TRUE
+from tkinter.constants import HORIZONTAL
 from tkinter import ttk
 from PIL import ImageTk, Image
-from histogram import Histogram, hsv2rgb, rgb2hsv
-from image_filter import BoxBlur, ContraharmonicFilter, ConvFilter, ConvFilterEditor, DiskFrequencyFilter, FrequencyFilter, GaussianFilter, GeometricFilter, HarmonicFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
+from histogram import Histogram
+from image_filter import BoxBlur, ContraharmonicFilter, ConvFilterEditor, DiskFrequencyFilter, FrequencyFilter, GaussianFilter, GeometricFilter, HarmonicFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
 from paint import Paint
 from curve import CurveEditor
 from fourier import slow_fourier, slow_inverse_fourier
@@ -369,15 +369,15 @@ class MainApp(tk.Frame):
         frequency = self.get_fft_from_image(self.modified_image_data)
         # Display options
         img = self.array_to_image(self.normalize_image(np.absolute(frequency), 0, 1000))
-        Paint(img, frequency, self)
-    
+        Paint(img, frequency, np.fft.ifft2,self)
+
     def slow_fourier(self):
         frequency = slow_fourier(self.modified_image_data)
         frequency = np.fft.fftshift(frequency)
         
         # Display options
         img = self.array_to_image(self.normalize_image(np.absolute(frequency), 0, 1000))
-        Paint(img, frequency, self)
+        Paint(img, frequency, slow_inverse_fourier, self)
 
     def pass_circ(self):
         w = len(self.modified_image_data)

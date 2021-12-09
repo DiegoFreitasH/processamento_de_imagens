@@ -7,9 +7,10 @@ class Paint:
     DEFAULT_PEN_SIZE = 5.0
     DEFAULT_COLOR = 'black'
 
-    def __init__(self, img: Image.Image, fft: np.ndarray, app = None):
+    def __init__(self, img: Image.Image, fft: np.ndarray, inv_fourier, app = None):
         self.app = app
         self.fft = fft
+        self.inv_fourier = inv_fourier
         self.root = Toplevel()
         self.root.title('FFT Painter')
         self.brush_button = Button(self.root, text='brush', command=self.use_brush)
@@ -85,9 +86,12 @@ class Paint:
     
             self.img.save(path)
         else:
-            self.app.modified_image_data = self.app.get_image_from_fft(self.fft * (np.uint8(self.mask)/255))
+            self.app.modified_image_data = self.get_image_from_fft(self.fft * (np.uint8(self.mask)/255))
             self.app.update_canvas(self.app.modified_image_data)
             self.root.destroy()
+    
+    def get_image_from_fft(self, freq: np.ndarray):
+        return np.real(self.inv_fourier(np.fft.ifftshift(freq)))
 
 if __name__ == '__main__':
     Paint(Image.open('./img/Fig0314(a)(100-dollars).tif'))
