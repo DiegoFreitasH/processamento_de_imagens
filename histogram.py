@@ -93,13 +93,18 @@ class Histogram:
         
         eq_controls.grid(row=11, column=0, columnspan=10, rowspan=6)
         
-        figure = plt.figure(figsize=(5,4), dpi=100)
+        self.figure = plt.figure(figsize=(5,4), dpi=100)
         
-        self.ax = figure.add_subplot(111)
-        self.chart = FigureCanvasTkAgg(figure, self.root)
+        self.ax = self.figure.add_subplot(111)
+        self.chart = FigureCanvasTkAgg(self.figure, self.root)
         self.ax.hist(self.array_to_image(self.im_value).getdata())
         self.chart.get_tk_widget().grid(column=0, row=10, columnspan=10,padx=20, pady=20)
-        self.root.protocol("WM_DELETE_WINDOW", self.root.destroy)
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+    
+    def on_close(self):
+        print('closing')
+        plt.close(self.figure)
+        self.root.destroy()
     
     def update_hist(self, *event):
         opt = self.colors.index(self.option.get()) - 1
