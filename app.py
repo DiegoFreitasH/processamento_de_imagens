@@ -1,37 +1,29 @@
 import numpy as np
 import tkinter as tk
-import matplotlib.pyplot as plt
 from tkinter import Scale, filedialog
-from tkinter.constants import HORIZONTAL
+from tkinter.constants import HORIZONTAL, TRUE
+from tkinter import ttk
 from PIL import ImageTk, Image
+from histogram import Histogram, hsv2rgb, rgb2hsv
 from image_filter import BoxBlur, ContraharmonicFilter, ConvFilter, ConvFilterEditor, DiskFrequencyFilter, FrequencyFilter, GaussianFilter, GeometricFilter, HarmonicFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
 from paint import Paint
 from curve import CurveEditor
-
+from fourier import slow_fourier, slow_inverse_fourier
 IMG_DIRECTORY = '~/UFC/processamento_imagens/processing_project/img'
 filetypes = (('all files', '*.*'), ('JPG images', '*.jpeg'), ('PNG images', '*.png'), ('Tif images', '*.tif'), ('BMP Images', '*.bmp'))
 root = tk.Tk()
 
 '''TODO
-Filtros de Sobel – x e y separados DONE
-Detecção não linear de bordas pelo gradiente (magnitude) DONE
 Esteganografia
-# FOURIER
-Cálculo da Transformada Discreta de Fourier
-Cálculo da transformada inversa
 # COR 
 Criar ferramenta para transformação entre sistemas de cores: RGB<->HSV
-Algoritmos de escala de cinza: média aritmética simples e média ponderada.
-Sépia
-Chroma-Key
-Histograma (R, G, B e V)
-Equalização de Histograma em imagens coloridas
-Suavização e Aguçamento em imagens coloridas
+Chroma-Key 
 Ajuste de Matiz, Saturação e Brilho
 Ajuste de Canal
 Dividindo os tons em escuros, médios e claros
 Implementar escala e rotação com interpolação pelo vizinho mais próximo e linear
 '''
+
 class MainApp(tk.Frame):
 
     def __init__(self, parent, *args, **kwargs):
@@ -50,7 +42,7 @@ class MainApp(tk.Frame):
 
         editmenu = tk.Menu(menubar, tearoff=0)
         editmenu.add_command(label='Values Curve', command=self.edit_values_curve)
-        editmenu.add_command(label='Convert to Grayscale', command=self.to_greyscale)
+        editmenu.add_command(label='Teste', command=self.test)
         menubar.add_cascade(label='Edit', menu=editmenu)
 
         filtermenu = tk.Menu(menubar, tearoff=0)
@@ -61,8 +53,8 @@ class MainApp(tk.Frame):
         filtermenu.add_command(label='Geometric Filter', command=self.create_filter_callback(GeometricFilter))
         filtermenu.add_command(label='Harmonic Filter', command=self.create_filter_callback(HarmonicFilter))
         filtermenu.add_command(label='Contraharmonic Filter', command=self.create_filter_callback(ContraharmonicFilter))
-        filtermenu.add_command(label='Sobel X', command=self.create_filter_callback(SobelX, normalize=True))
-        filtermenu.add_command(label='Sobel Y', command=self.create_filter_callback(SobelY, normalize=True))
+        filtermenu.add_command(label='Sobel X', command=self.create_filter_callback(SobelX, normalize_result=True))
+        filtermenu.add_command(label='Sobel Y', command=self.create_filter_callback(SobelY, normalize_result=True))
         filtermenu.add_command(label='Non linear border detection', command=self.sobel_border_detection)
         filtermenu.add_separator()
         filtermenu.add_command(label='Custom Conv. Filter', command=self.edit_conv_filter)
@@ -75,11 +67,20 @@ class MainApp(tk.Frame):
 
         frequencymenu = tk.Menu(menubar, tearoff=0)
         frequencymenu.add_command(label='Fast Fourier Transform', command=self.edit_image_frequency)
-        frequencymenu.add_command(label='Passa Alta', command=self.pass_low_filter)
-        frequencymenu.add_command(label='Rejeita Baixa', command=self.pass_high_filter)
-        frequencymenu.add_command(label='Disk', command=self.disk_freq_filter)
+        frequencymenu.add_command(label='Passa Circulo', command=self.pass_circ)
+        frequencymenu.add_command(label='Rejeita Circulo', command=self.reject_circ)
+        frequencymenu.add_command(label='Passa Disk', command=self.pass_disk)
+        frequencymenu.add_command(label='Rejeita Disk', command=self.reject_disk)
+        frequencymenu.add_separator()
+        frequencymenu.add_command(label='Slow Fourier Transform', command=self.slow_fourier)
         menubar.add_cascade(label='Frequency', menu=frequencymenu)
 
+        colormenu = tk.Menu(menubar, tearoff=0)
+        colormenu.add_command(label='Show histogram', command=self.histogram_editor)
+        colormenu.add_command(label='Greyscale', command=lambda: self.to_greyscale(t='A'))
+        colormenu.add_command(label='Greyscale geometric', command=lambda: self.to_greyscale(t='G'))
+        colormenu.add_command(label='Sepia', command=self.to_sepia)
+        menubar.add_cascade(label='Color', menu=colormenu)
         self.parent.config(menu=menubar)
         
         tk.Label(parent, text='Brightness').pack()
@@ -130,8 +131,24 @@ class MainApp(tk.Frame):
         )
         gamma_control.set(100)
         gamma_control.pack()
-
-        tk.Label(parent, text='Filter Size').pack(expand=False)
+        
+        tk.Label(parent, text='Saturation').pack()
+        self.saturation = tk.DoubleVar()
+        saturation_control = tk.Scale(
+            parent,
+            variable=self.saturation,
+            from_=1,
+            to=200,
+            orient=HORIZONTAL,
+            command=self.apply_changes
+        )
+        saturation_control.set(100)
+        saturation_control.pack()
+        
+        ttk.Separator(parent, orient='horizontal').pack(fill='x', pady=(10, 0))
+        
+        tk.Label(parent, text='Filter Controls').pack(pady=(0, 10))
+        tk.Label(parent, text='Filter Kernel Size').pack()
         self.filter_size = tk.IntVar() 
         filter_sizes = [3, 5, 7, 9]
         filter_size_controls = tk.OptionMenu(
@@ -141,16 +158,28 @@ class MainApp(tk.Frame):
         )
         self.filter_size.set(3)
         filter_size_controls.pack()
-        self.frequency_filter_radius = tk.IntVar()
-        frequency_radius_controls = tk.Scale(
+        tk.Label(parent, text='Frequency Filter Inner Radius').pack()
+        self.frequency_filter_inner_radius = tk.IntVar()
+        frequency_inner_radius_controls = tk.Scale(
             parent,
-            variable=self.frequency_filter_radius,
+            variable=self.frequency_filter_inner_radius,
             from_=10,
             to=50,
             orient=HORIZONTAL
         )
-        self.frequency_filter_radius.set(20)
-        frequency_radius_controls.pack()
+        self.frequency_filter_inner_radius.set(20)
+        frequency_inner_radius_controls.pack()
+        tk.Label(parent, text='Frequency Filter Outer Radius').pack()
+        self.frequency_filter_outer_radius = tk.IntVar()
+        frequency_outer_radius_controls = tk.Scale(
+            parent,
+            variable=self.frequency_filter_outer_radius,
+            from_=10,
+            to=50,
+            orient=HORIZONTAL
+        )
+        self.frequency_filter_outer_radius.set(20)
+        frequency_outer_radius_controls.pack()
         self.gaussian_decay_check = tk.BooleanVar()
         gaussian_decay_controls = tk.Checkbutton(
             parent,
@@ -158,24 +187,27 @@ class MainApp(tk.Frame):
             variable=self.gaussian_decay_check,
         )
         gaussian_decay_controls.pack()
-        equalize_controls = tk.Button(
+        
+        ttk.Separator(parent, orient='horizontal').pack(fill='x', pady=(10, 0))
+        tk.Label(parent, text='Binarization Threshold').pack()
+        self.bin_thrshold = tk.IntVar()
+        tk.Scale(
             parent,
-            text='Equalize',
-            padx=10, pady=5,
-            fg='white', bg='#263D42',
-            command=self.equalize_histogram
-        )
-        equalize_controls.pack()
-
-        hist_controls = tk.Button(
+            variable=self.bin_thrshold,
+            from_=0,
+            to=255,
+            orient=HORIZONTAL,
+            command=self.apply_changes
+        ).pack()
+        self.bin_thrshold.set(0)
+        self.is_bin_active = tk.BooleanVar()
+        tk.Checkbutton(
             parent,
-            text='Show Histogram',
-            padx=10, pady=5,
-            fg='white', bg='#263D42',
-            command=self.show_histogram
-        )
-        hist_controls.pack()
-
+            text='Apply Binarization',
+            variable=self.is_bin_active,
+            command=self.apply_changes
+        ).pack()
+        self.is_bin_active.set(False)
         self.image_displayer = tk.Toplevel(self.parent)
         self.image_displayer.title('Image Displayer')
         
@@ -227,19 +259,41 @@ class MainApp(tk.Frame):
         
         if(self.apply_log.get() > 2):
             self.modified_image_data = np.log(1 + self.normalize_image(self.modified_image_data)) / np.log(self.apply_log.get())
-        
+
         self.modified_image_data = self.modified_image_data ** (self.gamma_value.get() / 100)
         self.modified_image_data = self.modified_image_data * self.brightness.get() / 100
+        
+        # if self.color_mode == 'RGB':
+        #     hsv = rgb2hsv(self.modified_image_data)
+        #     hsv[:,:,2] = hsv[:,:,2]*(self.saturation.get()/100)
+        #     self.modified_image_data = hsv2rgb(hsv)
 
+        if(self.is_bin_active.get() and self.color_mode == 'L'):
+            self.modified_image_data = self.modified_image_data >= self.bin_thrshold.get()/255
+        
         self.update_canvas(self.modified_image_data)
 
-    def to_greyscale(self):
-        if self.color_mode != "L":
+    def to_greyscale(self, t='A'):
+        if self.color_mode != "L" and t=='A':
             self.color_mode = "L"
             self.image_data = np.mean(self.modified_image_data, axis=2)
             self.modified_image_data = self.image_data
             self.update_canvas(self.modified_image_data)
+        elif self.color_mode != "L" and t=='G':
+            self.color_mode = "L"
+            self.image_data = np.average(self.modified_image_data, weights=[0.299, 0.587, 0.114], axis=2)
+            self.modified_image_data = self.image_data
+            self.update_canvas(self.modified_image_data)
 
+    def to_sepia(self):
+        sepia_matrix = np.array([
+            [0.393, 0.769, 0.189],
+            [0.349, 0.686, 0.168],
+            [0.272, 0.534, 0.131],
+        ]).T
+        if self.color_mode == 'RGB':
+            self.modified_image_data = self.modified_image_data@sepia_matrix
+            self.update_canvas(self.modified_image_data)
     def update_canvas(self, image_data: np.ndarray):
         img = self.array_to_image(image_data)
         img.thumbnail((600,600))
@@ -249,24 +303,9 @@ class MainApp(tk.Frame):
 
     def on_close_display(self):
         self.image_displayer.withdraw()
-
-    def show_histogram(self):
-        plt.hist(self.array_to_image(self.modified_image_data).getdata(), bins=40)
-        plt.show()
     
-    def equalize_histogram(self):
-        pixel_matrix = self.to_bytes_matrix(self.modified_image_data)
-        image = Image.fromarray(pixel_matrix)
-        
-        hist = np.array(image.histogram())
-        hist_prob = hist / (image.width * image.height)
-        cum_hist = np.cumsum(hist_prob)
-        
-        color_lookup = np.uint8(np.clip(cum_hist * 255, 0, 255))
-        self.image_data = np.array([[color_lookup[v]/255 for v in row] for row in pixel_matrix])
-        self.modified_image_data = self.image_data
-        
-        self.update_canvas(self.modified_image_data)
+    def histogram_editor(self):
+        Histogram(self)
 
     def edit_conv_filter(self):
         ConvFilterEditor(self.filter_size.get(), self)
@@ -276,8 +315,8 @@ class MainApp(tk.Frame):
 
     def sharpen_laplacian(self):
         mask = self.apply_filter(LaplacianFilter())
-
-        self.modified_image_data = self.modified_image_data + 1.5*mask
+        
+        self.modified_image_data = self.modified_image_data + mask
         self.image_data = self.modified_image_data 
         self.update_canvas(self.image_data)
 
@@ -298,16 +337,16 @@ class MainApp(tk.Frame):
         self.image_data = self.modified_image_data
         self.update_canvas(self.modified_image_data)
 
-    def create_filter_callback(self, filter_obj, normalize=False):
+    def create_filter_callback(self, filter_obj, normalize_result=False):
 
         def filter_callback():
-            self.image_data = self.apply_filter(filter_obj(self.filter_size.get()), normalize)
+            self.image_data = self.apply_filter(filter_obj(self.filter_size.get()), normalize_result)
             self.modified_image_data = self.image_data
             self.update_canvas(self.image_data)
         
         return filter_callback
 
-    def apply_filter(self, f, normalize=False):
+    def apply_filter(self, f, normalize_result=False):
         filtered_img = np.empty_like(self.modified_image_data)
         h = len(self.modified_image_data)
         w = len(self.modified_image_data[0])
@@ -315,7 +354,7 @@ class MainApp(tk.Frame):
         for i in range(h):
             for j in range(w):
                 filtered_img[i][j] = f.apply(i,j,self.modified_image_data)
-        if normalize:
+        if normalize_result:
             filtered_img = self.normalize_image(filtered_img)
         return filtered_img
     
@@ -329,13 +368,21 @@ class MainApp(tk.Frame):
     def edit_image_frequency(self):
         frequency = self.get_fft_from_image(self.modified_image_data)
         # Display options
-        img = self.array_to_image(np.real(frequency))
+        img = self.array_to_image(self.normalize_image(np.absolute(frequency), 0, 1000))
+        Paint(img, frequency, self)
+    
+    def slow_fourier(self):
+        frequency = slow_fourier(self.modified_image_data)
+        frequency = np.fft.fftshift(frequency)
+        
+        # Display options
+        img = self.array_to_image(self.normalize_image(np.absolute(frequency), 0, 1000))
         Paint(img, frequency, self)
 
-    def pass_low_filter(self):
+    def pass_circ(self):
         w = len(self.modified_image_data)
         h = len(self.modified_image_data[0])
-        f = FrequencyFilter(self.frequency_filter_radius.get(), w, h, gauss=self.gaussian_decay_check.get())
+        f = FrequencyFilter(self.frequency_filter_inner_radius.get(), w, h, gauss=self.gaussian_decay_check.get())
         frequency = self.get_fft_from_image(self.modified_image_data)
         filtered_frequency = f.apply(frequency)
         
@@ -343,10 +390,10 @@ class MainApp(tk.Frame):
         self.image_data = self.modified_image_data
         self.update_canvas(self.modified_image_data)
     
-    def pass_high_filter(self):
+    def reject_circ(self):
         w = len(self.modified_image_data)
         h = len(self.modified_image_data[0])
-        f = FrequencyFilter(self.frequency_filter_radius.get(), w, h, True, gauss=self.gaussian_decay_check.get())
+        f = FrequencyFilter(self.frequency_filter_inner_radius.get(), w, h, invert=True, gauss=self.gaussian_decay_check.get())
         frequency = self.get_fft_from_image(self.modified_image_data)
         filtered_frequency = f.apply(frequency)
         
@@ -354,20 +401,34 @@ class MainApp(tk.Frame):
         self.image_data = self.modified_image_data
         self.update_canvas(self.modified_image_data)
 
-    def disk_freq_filter(self):
+    def pass_disk(self):
         w = len(self.modified_image_data)
         h = len(self.modified_image_data[0])
-        r = self.frequency_filter_radius.get()
-        f = DiskFrequencyFilter(r, r+5, w, h)
+        inner_r = self.frequency_filter_inner_radius.get()
+        outer_r = self.frequency_filter_outer_radius.get()
+        f = DiskFrequencyFilter(inner_r, outer_r, w, h)
         frequency = self.get_fft_from_image(self.modified_image_data)
         filtered_frequency = f.apply(frequency)
         
         self.modified_image_data = self.get_image_from_fft(filtered_frequency)
         self.update_canvas(self.modified_image_data)
 
-    def normalize_image(self, image_data: np.ndarray) -> np.ndarray:
-        minv = np.abs(np.min(image_data))
-        maxv = np.max(image_data)
+    def reject_disk(self):
+        w = len(self.modified_image_data)
+        h = len(self.modified_image_data[0])
+        inner_r = self.frequency_filter_inner_radius.get()
+        outer_r = self.frequency_filter_outer_radius.get()
+        f = DiskFrequencyFilter(inner_r, outer_r, w, h, invert=True)
+        frequency = self.get_fft_from_image(self.modified_image_data)
+        filtered_frequency = f.apply(frequency)
+        
+        self.modified_image_data = self.get_image_from_fft(filtered_frequency)
+        self.update_canvas(self.modified_image_data)
+    
+    def normalize_image(self, image_data: np.ndarray, minv=None, maxv=None) -> np.ndarray:
+        if minv == maxv == None:
+            minv = np.abs(np.min(image_data))
+            maxv = np.abs(np.max(image_data))
         return (image_data + minv) / (maxv + minv)
 
     def get_image_array(self, filename: str) -> np.ndarray:
@@ -380,6 +441,13 @@ class MainApp(tk.Frame):
 
     def array_to_image(self, array: np.ndarray) -> Image.Image:
         return Image.fromarray(self.to_bytes_matrix(array))
+
+    def test(self):
+        # f = np.fft.fft2(self.modified_image_data)
+        f = slow_fourier(self.modified_image_data)
+        img = slow_inverse_fourier(f)
+        # img = np.fft.ifft2(f)
+        self.update_canvas(np.real(img))
 
 app = MainApp(root)
 root.mainloop()

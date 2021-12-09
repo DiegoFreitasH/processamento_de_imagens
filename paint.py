@@ -29,7 +29,7 @@ class Paint:
         self.save_btn.grid(row=0, column=4)
 
         self.img = img
-        self.mask = Image.fromarray(np.ones(img.size))
+        self.mask = Image.fromarray(np.ones((img.size[1], img.size[0]))*254)
         self.draw = ImageDraw.Draw(self.mask)
         self.image = ImageTk.PhotoImage(self.img)
         self.c = Canvas(self.root, bg='white', width=self.img.size[0], height=self.img.size[1])
@@ -37,7 +37,7 @@ class Paint:
         self.c.grid(row=1, columnspan=5)
 
         self.setup()
-        self.root.mainloop()
+        self.root.protocol("WM_DELETE_WINDOW", self.root.destroy)
 
     def setup(self):
         self.old_x = None
@@ -63,11 +63,12 @@ class Paint:
     def paint(self, event):
         self.line_width = self.choose_size_button.get()
         paint_color = 'white' if self.eraser_on else self.color
+        paint_num = 1 if self.eraser_on else 0
         if self.old_x and self.old_y:
             self.c.create_line(self.old_x, self.old_y, event.x, event.y,
                                width=self.line_width, fill=paint_color,
                                capstyle=ROUND, smooth=TRUE, splinesteps=36)
-            self.draw.line([self.old_x, self.old_y, event.x, event.y], fill=paint_color, width=self.line_width)
+            self.draw.line([(self.old_x, self.old_y), (event.x, event.y)], fill=paint_num, width=self.line_width)
         self.old_x = event.x
         self.old_y = event.y
 
@@ -84,7 +85,7 @@ class Paint:
     
             self.img.save(path)
         else:
-            self.app.modified_image_data = self.app.get_image_from_fft(self.fft * np.asarray(self.mask).T)
+            self.app.modified_image_data = self.app.get_image_from_fft(self.fft * (np.uint8(self.mask)/255))
             self.app.update_canvas(self.app.modified_image_data)
             self.root.destroy()
 

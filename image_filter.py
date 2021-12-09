@@ -1,5 +1,6 @@
 import numpy as np
 import tkinter as tk
+from numpy.core.fromnumeric import var
 from numpy.lib.arraypad import pad
 from scipy import signal
 
@@ -55,11 +56,11 @@ class BoxBlur(ConvFilter):
 
 class LaplacianFilter(ConvFilter):
 
-    def __init__(self, size) -> None:
+    def __init__(self, size=3) -> None:
         super().__init__(3, np.array([
-            [1, 1, 1],
-            [1,-8, 1],
-            [1, 1, 1]
+            [-1, -1, -1],
+            [-1,  8, -1],
+            [-1, -1, -1]
         ]), normalize=False)
 
 class GaussianFilter(ConvFilter):
@@ -71,16 +72,16 @@ class GaussianFilter(ConvFilter):
         ]), normalize=True)
     
 class SobelX(ConvFilter):
-    def __init__(self, size: int) -> None:
-        super().__init__(size, np.array([
+    def __init__(self, size: int=3) -> None:
+        super().__init__(3, np.array([
             [-1, 0, 1],
             [-2, 0, 2],
             [-1, 0, 1]
         ]), normalize=False)
     
 class SobelY(ConvFilter):
-    def __init__(self, size: int) -> None:
-        super().__init__(size, np.array([
+    def __init__(self, size: int=3) -> None:
+        super().__init__(3, np.array([
             [-1, -2, -1],
             [0, 0, 0],
             [1, 2, 1]
@@ -123,7 +124,7 @@ class FrequencyFilter:
         half_w = w//2
         half_h = h//2
         if gauss:
-            mask = gkern(kernlen=2*r, std=8)
+            mask = gkern(kernlen=2*r, std=r/2)
         else:
             Y, X = np.ogrid[-r:r:, -r:r]
             dist_from_center = np.sqrt(X**2 + Y**2)
@@ -173,19 +174,27 @@ class ConvFilterEditor:
                 row.append(cell_input)
             self.input_cells.append(row)
         
+        self.norm = tk.BooleanVar()
+        checkbox = tk.Checkbutton(
+            self.root,
+            text='Normalize',
+            variable=self.norm
+        )
+        self.norm.set(False)
+        checkbox.grid(row=self.size*i + offset, column=0, columnspan=self.size)
         apply_controls = tk.Button(
             self.root,
             text='Apply',
             command=self.apply
         )
-        apply_controls.grid(row=self.size*i + offset, column=0, columnspan=self.size)
+        apply_controls.grid(row=self.size*i+1 + offset, column=0, columnspan=self.size)
         
         self.root.mainloop()
     
     def apply(self):
         try:
             kernel_weights = [[float(self.input_cells[i][j].get()) for j in range(self.size)] for i in range(self.size)]
-            f = ConvFilter(self.size, np.array(kernel_weights))
+            f = ConvFilter(self.size, np.array(kernel_weights), normalize=self.norm.get())
             f_img = self.app.apply_filter(f)
             self.app.modified_image_data = f_img
             self.app.image_data = f_img
