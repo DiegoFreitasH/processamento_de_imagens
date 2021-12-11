@@ -1,11 +1,12 @@
+from math import floor
 import numpy as np
 import tkinter as tk
 from tkinter import Scale, filedialog
-from tkinter.constants import HORIZONTAL
+from tkinter.constants import HORIZONTAL, TRUE
 from tkinter import ttk
 from PIL import ImageTk, Image
-from histogram import Histogram
-from image_filter import BoxBlur, ContraharmonicFilter, ConvFilterEditor, DiskFrequencyFilter, FrequencyFilter, GaussianFilter, GeometricFilter, HarmonicFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
+from histogram import Histogram, rgb2hsv, hsv2rgb
+from image_filter import BoxBlur, ContraharmonicFilter, ConvFilterEditor, DiskFrequencyFilter, FrequencyFilter, GaussianFilter, GeometricFilter, HarmonicFilter, MeanFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
 from paint import Paint
 from curve import CurveEditor
 from fourier import slow_fourier, slow_inverse_fourier
@@ -18,10 +19,8 @@ Esteganografia
 # COR 
 Criar ferramenta para transformação entre sistemas de cores: RGB<->HSV
 Chroma-Key 
-Ajuste de Matiz, Saturação e Brilho
-Ajuste de Canal
 Dividindo os tons em escuros, médios e claros
-Implementar escala e rotação com interpolação pelo vizinho mais próximo e linear
+Implementar escala DONE e rotação com interpolação pelo vizinho mais próximo e linear
 '''
 
 class MainApp(tk.Frame):
@@ -42,19 +41,24 @@ class MainApp(tk.Frame):
 
         editmenu = tk.Menu(menubar, tearoff=0)
         editmenu.add_command(label='Values Curve', command=self.edit_values_curve)
-        editmenu.add_command(label='Teste', command=self.test)
+        editmenu.add_command(label='Scale Double (NN)', command=self.create_resize_callback(self.nearest_neighbor_resize, 2))
+        editmenu.add_command(label='Scale Half (NN)', command=self.create_resize_callback(self.nearest_neighbor_resize, 0.5))
+        editmenu.add_command(label='Scale Double (BL)', command=self.create_resize_callback(self.bilinear_resize, 2))
+        editmenu.add_command(label='Scale Half (BL)', command=self.create_resize_callback(self.bilinear_resize, 0.5))
+        editmenu.add_command(label='Rotate 90 (NN)', command=self.create_rotation_callback(self.nearest_neighbor_rotation, np.pi/4))
         menubar.add_cascade(label='Edit', menu=editmenu)
 
         filtermenu = tk.Menu(menubar, tearoff=0)
         filtermenu.add_command(label='Box Blur', command=self.create_filter_callback(BoxBlur))
         filtermenu.add_command(label='Gaussian Filter', command=self.create_filter_callback(GaussianFilter))
-        filtermenu.add_command(label='Laplacian Filter', command=self.create_filter_callback(LaplacianFilter))
+        filtermenu.add_command(label='Laplacian Filter', command=self.create_filter_callback(LaplacianFilter, acc=True))
         filtermenu.add_command(label='Median Filter', command=self.create_filter_callback(MedianFilter))
+        filtermenu.add_command(label='Mean Filter', command=self.create_filter_callback(MeanFilter))
         filtermenu.add_command(label='Geometric Filter', command=self.create_filter_callback(GeometricFilter))
         filtermenu.add_command(label='Harmonic Filter', command=self.create_filter_callback(HarmonicFilter))
         filtermenu.add_command(label='Contraharmonic Filter', command=self.create_filter_callback(ContraharmonicFilter))
-        filtermenu.add_command(label='Sobel X', command=self.create_filter_callback(SobelX, normalize_result=True))
-        filtermenu.add_command(label='Sobel Y', command=self.create_filter_callback(SobelY, normalize_result=True))
+        filtermenu.add_command(label='Sobel X', command=self.create_filter_callback(SobelX, normalize_result=True, acc=True))
+        filtermenu.add_command(label='Sobel Y', command=self.create_filter_callback(SobelY, normalize_result=True, acc=True))
         filtermenu.add_command(label='Non linear border detection', command=self.sobel_border_detection)
         filtermenu.add_separator()
         filtermenu.add_command(label='Custom Conv. Filter', command=self.edit_conv_filter)
@@ -131,6 +135,19 @@ class MainApp(tk.Frame):
         )
         gamma_control.set(100)
         gamma_control.pack()
+        
+        tk.Label(parent, text='HUE').pack()
+        self.hue = tk.DoubleVar()
+        hue_control = tk.Scale(
+            parent,
+            variable=self.hue,
+            from_=-360,
+            to=360,
+            orient=HORIZONTAL,
+            command=self.apply_changes
+        )
+        hue_control.set(0)
+        hue_control.pack()
         
         tk.Label(parent, text='Saturation').pack()
         self.saturation = tk.DoubleVar()
@@ -263,10 +280,11 @@ class MainApp(tk.Frame):
         self.modified_image_data = self.modified_image_data ** (self.gamma_value.get() / 100)
         self.modified_image_data = self.modified_image_data * self.brightness.get() / 100
         
-        # if self.color_mode == 'RGB':
-        #     hsv = rgb2hsv(self.modified_image_data)
-        #     hsv[:,:,2] = hsv[:,:,2]*(self.saturation.get()/100)
-        #     self.modified_image_data = hsv2rgb(hsv)
+        if self.color_mode == 'RGB':
+            hsv = rgb2hsv(self.modified_image_data)
+            hsv[:,:,0] = hsv[:,:,0]+(self.hue.get())
+            hsv[:,:,1] = hsv[:,:,1]*(self.saturation.get()/100)
+            self.modified_image_data = hsv2rgb(hsv)
 
         if(self.is_bin_active.get() and self.color_mode == 'L'):
             self.modified_image_data = self.modified_image_data >= self.bin_thrshold.get()/255
@@ -293,10 +311,12 @@ class MainApp(tk.Frame):
         ]).T
         if self.color_mode == 'RGB':
             self.modified_image_data = self.modified_image_data@sepia_matrix
+            self.image_data = self.modified_image_data
             self.update_canvas(self.modified_image_data)
+    
     def update_canvas(self, image_data: np.ndarray):
         img = self.array_to_image(image_data)
-        img.thumbnail((600,600))
+        # img.thumbnail((600,600))
         photo = ImageTk.PhotoImage(img)
         self.canvas.configure(image=photo)
         self.canvas.image = photo
@@ -330,32 +350,37 @@ class MainApp(tk.Frame):
         sobelx = SobelX(self.filter_size.get())
         sobely = SobelY(self.filter_size.get())
 
-        dx = self.apply_filter(sobelx)
-        dy = self.apply_filter(sobely)
+        is_rgb = self.color_mode == 'RGB'
+        dx = self.apply_filter(sobelx, acc=is_rgb)
+        dy = self.apply_filter(sobely, acc=is_rgb)
 
         self.modified_image_data = np.abs(dx) + np.abs(dy)
         self.image_data = self.modified_image_data
         self.update_canvas(self.modified_image_data)
 
-    def create_filter_callback(self, filter_obj, normalize_result=False):
+    def create_filter_callback(self, filter_obj, normalize_result=False, acc=False):
 
         def filter_callback():
-            self.image_data = self.apply_filter(filter_obj(self.filter_size.get()), normalize_result)
+            self.image_data = self.apply_filter(filter_obj(self.filter_size.get()), normalize_result, acc)
             self.modified_image_data = self.image_data
             self.update_canvas(self.image_data)
         
         return filter_callback
 
-    def apply_filter(self, f, normalize_result=False):
+    def apply_filter(self, f, normalize_result=False, acc=False):
         filtered_img = np.empty_like(self.modified_image_data)
         h = len(self.modified_image_data)
         w = len(self.modified_image_data[0])
-
         for i in range(h):
             for j in range(w):
-                filtered_img[i][j] = f.apply(i,j,self.modified_image_data)
+                if not acc or self.color_mode == 'L':
+                    filtered_img[i][j] = f.apply(i,j,self.modified_image_data)
+                else:
+                    filtered_img[i][j] = np.full(3,np.sum(f.apply(i,j,self.modified_image_data)))
+    
         if normalize_result:
-            filtered_img = self.normalize_image(filtered_img)
+            filtered_img = self.normalize_image(filtered_img)  
+        
         return filtered_img
     
     def get_fft_from_image(self, image: np.ndarray) -> np.ndarray:
@@ -425,6 +450,96 @@ class MainApp(tk.Frame):
         self.modified_image_data = self.get_image_from_fft(filtered_frequency)
         self.update_canvas(self.modified_image_data)
     
+    def nearest_neighbor_resize(self, image_data: np.ndarray, ratio: float) -> np.ndarray:
+        w = len(image_data)
+        h = len(image_data[0])
+        sw = floor(ratio*w)
+        sh = floor(ratio*h)
+        if self.color_mode == 'L':
+            out = np.empty((sw, sh))
+        elif self.color_mode == 'RGB':
+            out = np.empty((sw, sh, 3))
+        for i in range(sw):
+            for j in range(sh):
+                px = int(np.floor(i/ratio))
+                py = int(np.floor(j/ratio))
+                out[i,j] = image_data[px,py]
+        return out
+    
+    def bilinear_resize(self, image_data: np.ndarray, ratio: float) -> np.ndarray:
+        w = len(image_data)
+        h = len(image_data[0])
+        sw = floor(ratio*w)
+        sh = floor(ratio*h)
+        if self.color_mode == 'L':
+            out = np.empty((sw, sh))
+        elif self.color_mode == 'RGB':
+            out = np.empty((sw, sh, 3))
+        for i in range(sw):
+            for j in range(sh):
+                x, y = i/ratio, j/ratio
+
+                px1 = int(min(np.floor(x), w-1))
+                py1 = int(min(np.floor(y), h-1))
+                px2 = int(min((px1+1), w-1))
+                py2 = int(min((py1+1), h-1))
+                
+                # Interpolating P1 and P2
+                P1 = (px2-x)*image_data[px1, py1] + (x-px1)*image_data[px2, py1]
+                P2 = (px2-x)*image_data[px1, py2] + (x-px1)*image_data[px2, py2]
+
+                if px1 == px2:
+                    P1 = image_data[px1, py1]
+                    P2 = image_data[px2, py2]
+                
+                if py2 == py1:
+                    P = image_data[px2, py2]
+                else:
+                    P = (py2-y)*P1 + (y-py1)*P2
+                
+                out[i,j] = P
+        return out
+    
+    def create_resize_callback(self, scale_function, ratio):
+        
+        def callback():
+            self.modified_image_data = scale_function(self.modified_image_data, ratio)
+            self.image_data = self.modified_image_data
+            self.update_canvas(self.modified_image_data)
+        
+        return callback
+
+    def rotate_point(self, x, y, angle):
+        return x * np.cos(angle) - y * np.sin(angle), x * np.sin(angle) + y * np.cos(angle) 
+
+    def nearest_neighbor_rotation(self, image_data: np.ndarray, angle: float) -> np.ndarray:
+        rot_m = np.array([
+            [np.cos(angle), np.sin(angle)],
+            [-np.sin(angle), np.cos(angle)],
+        ])
+        w = len(image_data)
+        h = len(image_data[0])
+        out = []
+        for i in range(w):
+            row = []
+            for j in range(h):
+                px, py = self.rotate_point(i,j,angle)
+                px = int(min(px, w-1))
+                py = int(min(py, h-1))
+                row.append(image_data[px,py])
+            out.append(row)
+        out = np.array(out)
+        return out
+    
+    def create_rotation_callback(self, rotation_func, angle):
+
+        def callback():
+            self.modified_image_data = rotation_func(self.modified_image_data, angle)
+            self.image_data = self.modified_image_data
+            self.update_canvas(self.modified_image_data)
+        
+        return callback
+
     def normalize_image(self, image_data: np.ndarray, minv=None, maxv=None) -> np.ndarray:
         if minv == maxv == None:
             minv = np.abs(np.min(image_data))

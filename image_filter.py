@@ -23,7 +23,8 @@ class NonLinearFilter(Filter):
         h = len(image_data[0])
         minx, maxx = max(i - self.offset, 0), min(i + self.offset + 1, w)
         miny, maxy = max(j - self.offset, 0), min(j + self.offset + 1, h)
-
+        if len(image_data.shape) == 3:
+            return self.f(image_data[minx:maxx, miny:maxy], axis=(0,1))
         return self.f(image_data[minx:maxx, miny:maxy])
 
 class ConvFilter(Filter):
@@ -93,24 +94,33 @@ class MedianFilter(NonLinearFilter):
         super().__init__(size, np.median)
 
 class GeometricFilter(NonLinearFilter):
+    
+    def geometric_mean(self, arr: np.ndarray, **kwargs):
+        return arr.prod(**kwargs)**(1/len(arr))
 
     def __init__(self, size) -> None:
-        super().__init__(size, lambda arr: arr.prod()**(1/len(arr)))
+        super().__init__(size, self.geometric_mean)
 
 class MeanFilter(NonLinearFilter):
-
+    
     def __init__(self, size):
         super().__init__(size, np.mean)
 
 class HarmonicFilter(NonLinearFilter):
 
+    def harmonic_mean(self, arr, **kwargs):
+        return len(arr) / np.sum(1.0/arr, **kwargs)
+
     def __init__(self, size) -> None:
-        super().__init__(size, lambda arr: len(arr) / np.sum(1.0/arr))
+        super().__init__(size, self.harmonic_mean)
 
 class ContraharmonicFilter(NonLinearFilter):
 
+    def contraharmonic_mean(self, arr, **kwargs):
+        return np.sum(arr**2, **kwargs) / (np.sum(arr, **kwargs) + 1e-12)
+
     def __init__(self, size) -> None:
-        super().__init__(size, lambda arr: np.sum(arr**2) / np.sum(arr))
+        super().__init__(size, self.contraharmonic_mean)
 
 def gkern(kernlen=21, std=3):
     """Returns a 2D Gaussian kernel array."""

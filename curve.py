@@ -26,6 +26,12 @@ class CurveEditor:
             command=self.add_point
         )
         self.draw_curve.grid(column=0, row=2, columnspan=3)
+        self.remove_point = tk.Button(
+            self.root,
+            text="Remove last point",
+            command=self.remove_last_points
+        )
+        self.remove_point.grid(column=3, row=2, columnspan=3)
         apply_controls = tk.Button(
             self.root,
             text="Apply",
@@ -58,6 +64,7 @@ class CurveEditor:
         ax = figure.add_subplot(111)
         self.chart = FigureCanvasTkAgg(figure, self.root)
         self.line, = ax.plot(self.points_x, self.points_y)
+        self.points, = ax.plot(self.points_x, self.points_y, 'o')
         self.chart.get_tk_widget().grid(column=0, row=10, columnspan=10,padx=20, pady=20)
         self.root.mainloop()
 
@@ -79,16 +86,21 @@ class CurveEditor:
             print(e)
 
     def remove_last_points(self):
-        if len(self.points_x > 2):
+        if len(self.points_x) > 2:
             self.points_x.pop()
             self.points_y.pop()
         
-    def update_curve(self):
+    def update_curve(self): 
+        px = np.array(self.points_x)
+        py = np.array(self.points_y)
+     
         x = np.linspace(0,1,30)
         y = self.poly(x)
         
         self.line.set_xdata(x)
         self.line.set_ydata(y)
+        self.points.set_xdata(px)
+        self.points.set_ydata(py)
         self.chart.draw()
     
     def get_polynomial_interpolation(self):
