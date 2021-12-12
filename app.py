@@ -2,7 +2,7 @@ from math import floor
 import numpy as np
 import tkinter as tk
 from tkinter import Scale, filedialog
-from tkinter.constants import HORIZONTAL, TRUE
+from tkinter.constants import HORIZONTAL
 from tkinter import ttk
 from PIL import ImageTk, Image
 from histogram import Histogram, rgb2hsv, hsv2rgb
@@ -19,9 +19,8 @@ root = tk.Tk()
 Esteganografia
 # COR 
 Criar ferramenta para transformação entre sistemas de cores: RGB<->HSV
-Chroma-Key DONE
 Dividindo os tons em escuros, médios e claros
-Implementar escala DONE e rotação com interpolação pelo vizinho mais próximo e linear
+rotação com interpolação pelo vizinho mais próximo e linear
 '''
 
 class MainApp(tk.Frame):
@@ -40,13 +39,16 @@ class MainApp(tk.Frame):
         menubar.add_cascade(label='File', menu=filemenu)
 
         editmenu = tk.Menu(menubar, tearoff=0)
-        editmenu.add_command(label='Values Curve', command=self.edit_values_curve)
         editmenu.add_command(label='Scale Double (NN)', command=self.create_resize_callback(self.nearest_neighbor_resize, 2))
         editmenu.add_command(label='Scale Half (NN)', command=self.create_resize_callback(self.nearest_neighbor_resize, 0.5))
         editmenu.add_command(label='Scale Double (BL)', command=self.create_resize_callback(self.bilinear_resize, 2))
         editmenu.add_command(label='Scale Half (BL)', command=self.create_resize_callback(self.bilinear_resize, 0.5))
-        editmenu.add_command(label='Rotate 90 (NN)', command=self.create_rotation_callback(self.nearest_neighbor_rotation, np.pi/4))
+        editmenu.add_command(label='Rotate 90 (NN)', command=self.create_rotation_callback(self.nearest_neighbor_rotation, np.pi/2))
+        editmenu.add_command(label='Rotate 90 (BL)', command=self.create_rotation_callback(self.bilinear_rotation, np.pi/2))
+        editmenu.add_separator()
+        editmenu.add_command(label='Values Curve', command=self.edit_values_curve)
         editmenu.add_command(label='Chroma Key', command=self.apply_chroma)
+        editmenu.add_command(label='Show histogram', command=self.histogram_editor)
         menubar.add_cascade(label='Edit', menu=editmenu)
 
         filtermenu = tk.Menu(menubar, tearoff=0)
@@ -81,7 +83,6 @@ class MainApp(tk.Frame):
         menubar.add_cascade(label='Frequency', menu=frequencymenu)
 
         colormenu = tk.Menu(menubar, tearoff=0)
-        colormenu.add_command(label='Show histogram', command=self.histogram_editor)
         colormenu.add_command(label='Greyscale', command=lambda: self.to_greyscale(t='A'))
         colormenu.add_command(label='Greyscale geometric', command=lambda: self.to_greyscale(t='G'))
         colormenu.add_command(label='Sepia', command=self.to_sepia)
@@ -395,12 +396,16 @@ class MainApp(tk.Frame):
 
     # Create apply custom image frequency
     def edit_image_frequency(self):
+        if self.color_mode == 'RGB':
+            return
         frequency = self.get_fft_from_image(self.modified_image_data)
         # Display options
         img = self.array_to_image(self.normalize_image(np.absolute(frequency), 0, 1000))
         Paint(img, frequency, np.fft.ifft2,self)
 
     def slow_fourier(self):
+        if self.color_mode == 'RGB':
+            return
         frequency = slow_fourier(self.modified_image_data)
         frequency = np.fft.fftshift(frequency)
         
@@ -409,6 +414,8 @@ class MainApp(tk.Frame):
         Paint(img, frequency, slow_inverse_fourier, self)
 
     def pass_circ(self):
+        if self.color_mode == 'RGB':
+            return
         w = len(self.modified_image_data)
         h = len(self.modified_image_data[0])
         f = FrequencyFilter(self.frequency_filter_inner_radius.get(), w, h, gauss=self.gaussian_decay_check.get())
@@ -420,6 +427,8 @@ class MainApp(tk.Frame):
         self.update_canvas(self.modified_image_data)
     
     def reject_circ(self):
+        if self.color_mode == 'RGB':
+            return
         w = len(self.modified_image_data)
         h = len(self.modified_image_data[0])
         f = FrequencyFilter(self.frequency_filter_inner_radius.get(), w, h, invert=True, gauss=self.gaussian_decay_check.get())
@@ -431,6 +440,8 @@ class MainApp(tk.Frame):
         self.update_canvas(self.modified_image_data)
 
     def pass_disk(self):
+        if self.color_mode == 'RGB':
+            return
         w = len(self.modified_image_data)
         h = len(self.modified_image_data[0])
         inner_r = self.frequency_filter_inner_radius.get()
@@ -443,6 +454,8 @@ class MainApp(tk.Frame):
         self.update_canvas(self.modified_image_data)
 
     def reject_disk(self):
+        if self.color_mode == 'RGB':
+            return
         w = len(self.modified_image_data)
         h = len(self.modified_image_data[0])
         inner_r = self.frequency_filter_inner_radius.get()
@@ -516,25 +529,66 @@ class MainApp(tk.Frame):
     def rotate_point(self, x, y, angle):
         return x * np.cos(angle) - y * np.sin(angle), x * np.sin(angle) + y * np.cos(angle) 
 
+    def rotation_bbox(self, w, h, angle):
+        tl = self.rotate_point(0,0,angle)
+        tr = self.rotate_point(0,h,angle)
+        bl = self.rotate_point(w,0,angle)
+        br = self.rotate_point(w,h,angle)
+        return np.array([tl, tr, bl, br])
+
     def nearest_neighbor_rotation(self, image_data: np.ndarray, angle: float) -> np.ndarray:
-        rot_m = np.array([
-            [np.cos(angle), np.sin(angle)],
-            [-np.sin(angle), np.cos(angle)],
-        ])
         w = len(image_data)
         h = len(image_data[0])
-        out = []
-        for i in range(w):
-            row = []
-            for j in range(h):
+        bbox = self.rotation_bbox(w,h,angle)
+        w2 = np.linalg.norm(bbox[1] - bbox[0]).astype(np.int64)
+        h2 = np.linalg.norm(bbox[2] - bbox[0]).astype(np.int64)
+        if self.color_mode == 'L':
+            out = np.zeros((w2, h2))
+        elif self.color_mode == 'RGB':
+            out = np.zeros((w2, h2, 3))
+        for i in range(w2):
+            for j in range(h2):
                 px, py = self.rotate_point(i,j,angle)
                 px = int(min(px, w-1))
                 py = int(min(py, h-1))
-                row.append(image_data[px,py])
-            out.append(row)
-        out = np.array(out)
+                out[i,j] = image_data[px,py]
         return out
     
+    def bilinear_rotation(self, image_data: np.ndarray, angle: float):
+        w = len(image_data)
+        h = len(image_data[0])
+        bbox = self.rotation_bbox(w,h,angle)
+        w2 = np.linalg.norm(bbox[1] - bbox[0]).astype(np.int64)
+        h2 = np.linalg.norm(bbox[2] - bbox[0]).astype(np.int64)
+        if self.color_mode == 'L':
+            out = np.zeros((w2, h2))
+        elif self.color_mode == 'RGB':
+            out = np.zeros((w2, h2, 3))
+        for i in range(w2):
+            for j in range(h2):
+                x, y = self.rotate_point(i,j,angle)
+
+                px1 = int(min(np.floor(x), w-1))
+                py1 = int(min(np.floor(y), h-1))
+                px2 = int(min((px1+1), w-1))
+                py2 = int(min((py1+1), h-1))
+                
+                # Interpolating P1 and P2
+                P1 = (px2-x)*image_data[px1, py1] + (x-px1)*image_data[px2, py1]
+                P2 = (px2-x)*image_data[px1, py2] + (x-px1)*image_data[px2, py2]
+
+                if px1 == px2:
+                    P1 = image_data[px1, py1]
+                    P2 = image_data[px2, py2]
+                
+                if py2 == py1:
+                    P = image_data[px2, py2]
+                else:
+                    P = (py2-y)*P1 + (y-py1)*P2
+                
+                out[i,j] = P
+        return out
+
     def create_rotation_callback(self, rotation_func, angle):
 
         def callback():
