@@ -10,6 +10,7 @@ from image_filter import BoxBlur, ContraharmonicFilter, ConvFilterEditor, DiskFr
 from paint import Paint
 from curve import CurveEditor
 from fourier import slow_fourier, slow_inverse_fourier
+from chroma import Chroma
 IMG_DIRECTORY = '~/UFC/processamento_imagens/processing_project/img'
 filetypes = (('all files', '*.*'), ('JPG images', '*.jpeg'), ('PNG images', '*.png'), ('Tif images', '*.tif'), ('BMP Images', '*.bmp'))
 root = tk.Tk()
@@ -18,18 +19,17 @@ root = tk.Tk()
 Esteganografia
 # COR 
 Criar ferramenta para transformação entre sistemas de cores: RGB<->HSV
-Chroma-Key 
+Chroma-Key DONE
 Dividindo os tons em escuros, médios e claros
 Implementar escala DONE e rotação com interpolação pelo vizinho mais próximo e linear
 '''
 
 class MainApp(tk.Frame):
 
-    def __init__(self, parent, *args, **kwargs):
+    def __init__(self, parent: tk.Tk, *args, **kwargs):
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
         self.parent.title('Controls')
-
         self.image_data = np.array([])
         self.modified_image_data = self.image_data
 
@@ -46,6 +46,7 @@ class MainApp(tk.Frame):
         editmenu.add_command(label='Scale Double (BL)', command=self.create_resize_callback(self.bilinear_resize, 2))
         editmenu.add_command(label='Scale Half (BL)', command=self.create_resize_callback(self.bilinear_resize, 0.5))
         editmenu.add_command(label='Rotate 90 (NN)', command=self.create_rotation_callback(self.nearest_neighbor_rotation, np.pi/4))
+        editmenu.add_command(label='Chroma Key', command=self.apply_chroma)
         menubar.add_cascade(label='Edit', menu=editmenu)
 
         filtermenu = tk.Menu(menubar, tearoff=0)
@@ -86,8 +87,10 @@ class MainApp(tk.Frame):
         colormenu.add_command(label='Sepia', command=self.to_sepia)
         menubar.add_cascade(label='Color', menu=colormenu)
         self.parent.config(menu=menubar)
+        offset = 5
+        canvas_span = 60
         
-        tk.Label(parent, text='Brightness').pack()
+        tk.Label(parent, text='Brightness').grid(row=0, column=0, columnspan=offset)
         self.brightness = tk.DoubleVar()
         brightness_controls = Scale(
             parent, 
@@ -98,7 +101,7 @@ class MainApp(tk.Frame):
             command=self.apply_changes # Real time change
         )
         brightness_controls.set(100)
-        brightness_controls.pack(padx=10, pady=5)
+        brightness_controls.grid(row=1, column=0, columnspan=offset)
 
         self.is_negative = tk.BooleanVar()
         negative_controls = tk.Checkbutton(
@@ -109,9 +112,9 @@ class MainApp(tk.Frame):
             offvalue=False,
             command=self.apply_changes
         )
-        negative_controls.pack()
+        negative_controls.grid(row=2, column=0, columnspan=offset)
 
-        tk.Label(parent, text='Log').pack()
+        tk.Label(parent, text='Log').grid(row=3, column=0, columnspan=offset)
         self.apply_log = tk.IntVar()
         log_control = tk.Scale(
             parent,
@@ -121,9 +124,9 @@ class MainApp(tk.Frame):
             orient=HORIZONTAL,
             command=self.apply_changes
         )
-        log_control.pack()
+        log_control.grid(row=4, column=0, columnspan=offset)
 
-        tk.Label(parent, text='Gamma').pack()
+        tk.Label(parent, text='Gamma').grid(row=5, column=0, columnspan=offset)
         self.gamma_value = tk.DoubleVar()
         gamma_control = tk.Scale(
             parent,
@@ -134,9 +137,9 @@ class MainApp(tk.Frame):
             command=self.apply_changes
         )
         gamma_control.set(100)
-        gamma_control.pack()
+        gamma_control.grid(row=6, column=0, columnspan=offset)
         
-        tk.Label(parent, text='HUE').pack()
+        tk.Label(parent, text='HUE').grid(row=7, column=0, columnspan=offset)
         self.hue = tk.DoubleVar()
         hue_control = tk.Scale(
             parent,
@@ -147,9 +150,9 @@ class MainApp(tk.Frame):
             command=self.apply_changes
         )
         hue_control.set(0)
-        hue_control.pack()
+        hue_control.grid(row=8, column=0, columnspan=offset)
         
-        tk.Label(parent, text='Saturation').pack()
+        tk.Label(parent, text='Saturation').grid(row=9, column=0, columnspan=offset)
         self.saturation = tk.DoubleVar()
         saturation_control = tk.Scale(
             parent,
@@ -160,12 +163,30 @@ class MainApp(tk.Frame):
             command=self.apply_changes
         )
         saturation_control.set(100)
-        saturation_control.pack()
+        saturation_control.grid(row=10, column=0, columnspan=offset)
+        tk.Label(parent, text='Binarization Threshold').grid(row=11, column=0, columnspan=offset)
+        self.bin_thrshold = tk.IntVar()
+        tk.Scale(
+            parent,
+            variable=self.bin_thrshold,
+            from_=0,
+            to=255,
+            orient=HORIZONTAL,
+            command=self.apply_changes
+        ).grid(row=12, column=0, columnspan=offset)
+        self.bin_thrshold.set(0)
+        self.is_bin_active = tk.BooleanVar()
+        tk.Checkbutton(
+            parent,
+            text='Apply Binarization',
+            variable=self.is_bin_active,
+            command=self.apply_changes
+        ).grid(row=13, column=0, columnspan=offset)
         
-        ttk.Separator(parent, orient='horizontal').pack(fill='x', pady=(10, 0))
+        ttk.Separator(parent, orient='vertical').grid(row=0, column=6, rowspan=20, columnspan=20, sticky="ns", padx=(20,20))
         
-        tk.Label(parent, text='Filter Controls').pack(pady=(0, 10))
-        tk.Label(parent, text='Filter Kernel Size').pack()
+        tk.Label(parent, text='Filter Controls').grid(row=0, column=2*offset+canvas_span, columnspan=offset)
+        tk.Label(parent, text='Filter Kernel Size').grid(row=1, column=2*offset+canvas_span, columnspan=offset)
         self.filter_size = tk.IntVar() 
         filter_sizes = [3, 5, 7, 9]
         filter_size_controls = tk.OptionMenu(
@@ -174,8 +195,8 @@ class MainApp(tk.Frame):
             *filter_sizes
         )
         self.filter_size.set(3)
-        filter_size_controls.pack()
-        tk.Label(parent, text='Frequency Filter Inner Radius').pack()
+        filter_size_controls.grid(row=2, column=2*offset+canvas_span, columnspan=offset)
+        tk.Label(parent, text='Frequency Filter Inner Radius').grid(row=3, column=2*offset+canvas_span, columnspan=offset)
         self.frequency_filter_inner_radius = tk.IntVar()
         frequency_inner_radius_controls = tk.Scale(
             parent,
@@ -185,8 +206,8 @@ class MainApp(tk.Frame):
             orient=HORIZONTAL
         )
         self.frequency_filter_inner_radius.set(20)
-        frequency_inner_radius_controls.pack()
-        tk.Label(parent, text='Frequency Filter Outer Radius').pack()
+        frequency_inner_radius_controls.grid(row=4, column=2*offset+canvas_span, columnspan=offset)
+        tk.Label(parent, text='Frequency Filter Outer Radius').grid(row=5, column=2*offset+canvas_span, columnspan=offset)
         self.frequency_filter_outer_radius = tk.IntVar()
         frequency_outer_radius_controls = tk.Scale(
             parent,
@@ -196,35 +217,18 @@ class MainApp(tk.Frame):
             orient=HORIZONTAL
         )
         self.frequency_filter_outer_radius.set(20)
-        frequency_outer_radius_controls.pack()
+        frequency_outer_radius_controls.grid(row=6, column=2*offset+canvas_span, columnspan=offset)
         self.gaussian_decay_check = tk.BooleanVar()
         gaussian_decay_controls = tk.Checkbutton(
             parent,
             text='Use Gaussian Decay',
             variable=self.gaussian_decay_check,
         )
-        gaussian_decay_controls.pack()
-        
-        ttk.Separator(parent, orient='horizontal').pack(fill='x', pady=(10, 0))
-        tk.Label(parent, text='Binarization Threshold').pack()
-        self.bin_thrshold = tk.IntVar()
-        tk.Scale(
-            parent,
-            variable=self.bin_thrshold,
-            from_=0,
-            to=255,
-            orient=HORIZONTAL,
-            command=self.apply_changes
-        ).pack()
-        self.bin_thrshold.set(0)
-        self.is_bin_active = tk.BooleanVar()
-        tk.Checkbutton(
-            parent,
-            text='Apply Binarization',
-            variable=self.is_bin_active,
-            command=self.apply_changes
-        ).pack()
+        gaussian_decay_controls.grid(row=7, column=2*offset+canvas_span, columnspan=offset)
         self.is_bin_active.set(False)
+        
+        self.parent.anchor('center')
+        
         self.image_displayer = tk.Toplevel(self.parent)
         self.image_displayer.title('Image Displayer')
         
@@ -336,7 +340,7 @@ class MainApp(tk.Frame):
     def sharpen_laplacian(self):
         mask = self.apply_filter(LaplacianFilter())
         
-        self.modified_image_data = self.modified_image_data + mask
+        self.modified_image_data = self.modified_image_data + 0.5*mask
         self.image_data = self.modified_image_data 
         self.update_canvas(self.image_data)
 
@@ -539,6 +543,9 @@ class MainApp(tk.Frame):
             self.update_canvas(self.modified_image_data)
         
         return callback
+
+    def apply_chroma(self):
+        Chroma(self.modified_image_data, self)
 
     def normalize_image(self, image_data: np.ndarray, minv=None, maxv=None) -> np.ndarray:
         if minv == maxv == None:
