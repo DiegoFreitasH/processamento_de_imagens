@@ -1,27 +1,20 @@
-from math import floor
 import numpy as np
 import tkinter as tk
-from tkinter import Scale, filedialog
-from tkinter.constants import HORIZONTAL
+from math import floor
 from tkinter import ttk
-from PIL import ImageTk, Image
-from histogram import Histogram, rgb2hsv, hsv2rgb
-from image_filter import BoxBlur, ContraharmonicFilter, ConvFilterEditor, DiskFrequencyFilter, FrequencyFilter, GaussianFilter, GeometricFilter, HarmonicFilter, MeanFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
 from paint import Paint
-from curve import CurveEditor
-from fourier import slow_fourier, slow_inverse_fourier
 from chroma import Chroma
+from curve import CurveEditor
+from PIL import ImageTk, Image
+from tkinter import Scale, filedialog
+from tkinter.constants import END, HORIZONTAL
+from histogram import Histogram, rgb2hsv, hsv2rgb
+from fourier import slow_fourier, slow_inverse_fourier
+from image_filter import BoxBlur, ContraharmonicFilter, ConvFilterEditor, DiskFrequencyFilter, FrequencyFilter, GaussianFilter, GeometricFilter, HarmonicFilter, MeanFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
+
 IMG_DIRECTORY = '~/UFC/processamento_imagens/processing_project/img'
 filetypes = (('all files', '*.*'), ('JPG images', '*.jpeg'), ('PNG images', '*.png'), ('Tif images', '*.tif'), ('BMP Images', '*.bmp'))
 root = tk.Tk()
-
-'''TODO
-Esteganografia
-# COR 
-Criar ferramenta para transformação entre sistemas de cores: RGB<->HSV
-Dividindo os tons em escuros, médios e claros
-rotação com interpolação pelo vizinho mais próximo e linear
-'''
 
 class MainApp(tk.Frame):
 
@@ -49,6 +42,7 @@ class MainApp(tk.Frame):
         editmenu.add_command(label='Values Curve', command=self.edit_values_curve)
         editmenu.add_command(label='Chroma Key', command=self.apply_chroma)
         editmenu.add_command(label='Show histogram', command=self.histogram_editor)
+        editmenu.add_command(label='Teste', command=self.test)
         menubar.add_cascade(label='Edit', menu=editmenu)
 
         filtermenu = tk.Menu(menubar, tearoff=0)
@@ -91,6 +85,7 @@ class MainApp(tk.Frame):
         offset = 5
         canvas_span = 60
         
+        self.controls_vars = []
         tk.Label(parent, text='Brightness').grid(row=0, column=0, columnspan=offset)
         self.brightness = tk.DoubleVar()
         brightness_controls = Scale(
@@ -103,7 +98,8 @@ class MainApp(tk.Frame):
         )
         brightness_controls.set(100)
         brightness_controls.grid(row=1, column=0, columnspan=offset)
-
+        self.controls_vars.append([self.brightness, 100])
+        
         self.is_negative = tk.BooleanVar()
         negative_controls = tk.Checkbutton(
             parent,
@@ -114,7 +110,8 @@ class MainApp(tk.Frame):
             command=self.apply_changes
         )
         negative_controls.grid(row=2, column=0, columnspan=offset)
-
+        self.controls_vars.append([self.is_negative, False])
+        
         tk.Label(parent, text='Log').grid(row=3, column=0, columnspan=offset)
         self.apply_log = tk.IntVar()
         log_control = tk.Scale(
@@ -126,7 +123,8 @@ class MainApp(tk.Frame):
             command=self.apply_changes
         )
         log_control.grid(row=4, column=0, columnspan=offset)
-
+        self.controls_vars.append([self.apply_log, 1])
+        
         tk.Label(parent, text='Gamma').grid(row=5, column=0, columnspan=offset)
         self.gamma_value = tk.DoubleVar()
         gamma_control = tk.Scale(
@@ -139,20 +137,22 @@ class MainApp(tk.Frame):
         )
         gamma_control.set(100)
         gamma_control.grid(row=6, column=0, columnspan=offset)
+        self.controls_vars.append([self.gamma_value, 100])
         
         tk.Label(parent, text='HUE').grid(row=7, column=0, columnspan=offset)
         self.hue = tk.DoubleVar()
         hue_control = tk.Scale(
             parent,
             variable=self.hue,
-            from_=-360,
-            to=360,
+            from_=-180,
+            to=180,
             orient=HORIZONTAL,
             command=self.apply_changes
         )
         hue_control.set(0)
         hue_control.grid(row=8, column=0, columnspan=offset)
-        
+        self.controls_vars.append([self.hue, 0])
+
         tk.Label(parent, text='Saturation').grid(row=9, column=0, columnspan=offset)
         self.saturation = tk.DoubleVar()
         saturation_control = tk.Scale(
@@ -165,6 +165,8 @@ class MainApp(tk.Frame):
         )
         saturation_control.set(100)
         saturation_control.grid(row=10, column=0, columnspan=offset)
+        self.controls_vars.append([self.saturation, 100])
+        
         tk.Label(parent, text='Binarization Threshold').grid(row=11, column=0, columnspan=offset)
         self.bin_thrshold = tk.IntVar()
         tk.Scale(
@@ -176,6 +178,7 @@ class MainApp(tk.Frame):
             command=self.apply_changes
         ).grid(row=12, column=0, columnspan=offset)
         self.bin_thrshold.set(0)
+        
         self.is_bin_active = tk.BooleanVar()
         tk.Checkbutton(
             parent,
@@ -183,7 +186,11 @@ class MainApp(tk.Frame):
             variable=self.is_bin_active,
             command=self.apply_changes
         ).grid(row=13, column=0, columnspan=offset)
+        self.is_bin_active.set(False)
         
+        self.controls_vars.append([self.bin_thrshold, 0])
+        self.controls_vars.append([self.is_bin_active, False])
+
         ttk.Separator(parent, orient='vertical').grid(row=0, column=6, rowspan=20, columnspan=20, sticky="ns", padx=(20,20))
         
         tk.Label(parent, text='Filter Controls').grid(row=0, column=2*offset+canvas_span, columnspan=offset)
@@ -197,6 +204,8 @@ class MainApp(tk.Frame):
         )
         self.filter_size.set(3)
         filter_size_controls.grid(row=2, column=2*offset+canvas_span, columnspan=offset)
+        self.controls_vars.append([self.filter_size, 3])
+
         tk.Label(parent, text='Frequency Filter Inner Radius').grid(row=3, column=2*offset+canvas_span, columnspan=offset)
         self.frequency_filter_inner_radius = tk.IntVar()
         frequency_inner_radius_controls = tk.Scale(
@@ -208,6 +217,8 @@ class MainApp(tk.Frame):
         )
         self.frequency_filter_inner_radius.set(20)
         frequency_inner_radius_controls.grid(row=4, column=2*offset+canvas_span, columnspan=offset)
+        self.controls_vars.append([self.frequency_filter_inner_radius, 20])
+        
         tk.Label(parent, text='Frequency Filter Outer Radius').grid(row=5, column=2*offset+canvas_span, columnspan=offset)
         self.frequency_filter_outer_radius = tk.IntVar()
         frequency_outer_radius_controls = tk.Scale(
@@ -219,6 +230,8 @@ class MainApp(tk.Frame):
         )
         self.frequency_filter_outer_radius.set(20)
         frequency_outer_radius_controls.grid(row=6, column=2*offset+canvas_span, columnspan=offset)
+        self.controls_vars.append([self.frequency_filter_outer_radius, 20])
+
         self.gaussian_decay_check = tk.BooleanVar()
         gaussian_decay_controls = tk.Checkbutton(
             parent,
@@ -226,8 +239,28 @@ class MainApp(tk.Frame):
             variable=self.gaussian_decay_check,
         )
         gaussian_decay_controls.grid(row=7, column=2*offset+canvas_span, columnspan=offset)
-        self.is_bin_active.set(False)
-        
+        self.controls_vars.append([self.gaussian_decay_check, False])
+
+        ttk.Separator(parent, orient='horizontal').grid(row=8, column=offset+canvas_span, columnspan=offset+canvas_span, sticky="we", pady=(10,10), padx=(10,10))
+
+        tk.Label(parent, text='Message:').grid(row=9, column=2*offset+canvas_span, columnspan=offset)
+        self.secret_msg = tk.Entry(parent, width=10)
+        self.secret_msg.grid(row=10, column=2*offset+canvas_span, columnspan=offset)
+        self.encode_btn = tk.Button(
+            parent,
+            text='Encode',
+            command=self.encode_callback
+        ).grid(row=11,column=2*offset+canvas_span, columnspan=offset)
+
+        self.decode_btn = tk.Button(
+            parent,
+            text='Decode',
+            command=self.decode_callback
+        ).grid(row=12,column=2*offset+canvas_span, columnspan=offset)
+
+        self.decoded_msg = tk.Label(parent)
+        self.decoded_msg.grid(row=13, column=2*offset+canvas_span, columnspan=offset)
+
         self.parent.anchor('center')
         
         self.image_displayer = tk.Toplevel(self.parent)
@@ -242,6 +275,13 @@ class MainApp(tk.Frame):
 
         self.image_displayer.withdraw() # Hides display at startup
 
+    def reset_controls(self):
+        for (c, v) in self.controls_vars:
+            c.set(v)
+        self.secret_msg.delete(0, END)
+        self.decoded_msg.configure(text='')
+        self.decoded_msg.text = ''
+    
     def open_file(self):
         filename = filedialog.askopenfilename(
             initialdir=IMG_DIRECTORY, 
@@ -251,7 +291,12 @@ class MainApp(tk.Frame):
 
         try:
             self.image_data, self.color_mode = self.get_image_array(filename)
+            
+            if self.color_mode == 'RGBA':
+                self.image_data = self.image_data[:,:,:-1]
+                self.color_mode = 'RGB'
             self.modified_image_data = self.image_data
+            self.reset_controls()
             self.image_displayer.deiconify() # Unhide window when opening a new file
             self.update_canvas(self.image_data)
         except Exception as e:
@@ -267,8 +312,10 @@ class MainApp(tk.Frame):
             title='Save as ...',
             filetypes=filetypes
         )
-
-        self.array_to_image(self.modified_image_data).save(path)
+        if self.color_mode == 'RGB':
+            self.array_to_image(self.modified_image_data).save(path, 'png')
+        elif self.color_mode == 'L':
+            self.array_to_image(self.modified_image_data).save(path, 'tiff')
 
     def apply_changes(self, *event):
         if(len(self.image_data) == 0):
@@ -601,6 +648,18 @@ class MainApp(tk.Frame):
     def apply_chroma(self):
         Chroma(self.modified_image_data, self)
 
+    def encode_callback(self):
+        msg = self.secret_msg.get()
+        self.modified_image_data = self.encode(self.modified_image_data, msg)
+        self.image_data = self.modified_image_data
+        self.update_canvas(self.modified_image_data)
+    
+    def decode_callback(self):
+        msg = self.decode(self.modified_image_data)
+        self.decoded_msg.config(text=f'Decoded: {msg}')
+        self.decoded_msg.text = f'Decoded: {msg}'
+
+
     def normalize_image(self, image_data: np.ndarray, minv=None, maxv=None) -> np.ndarray:
         if minv == maxv == None:
             minv = np.abs(np.min(image_data))
@@ -617,13 +676,67 @@ class MainApp(tk.Frame):
 
     def array_to_image(self, array: np.ndarray) -> Image.Image:
         return Image.fromarray(self.to_bytes_matrix(array))
+    
+    def to_bytes(self, x: np.uint8):
+        return np.uint8([[int(i) for i in f'{b:08b}'] for b in x.tobytes()])
+
+    def to_uint(self, x: np.uint8):
+        return np.uint8([np.sum([i[j]*(2**(8-j-1)) for j in range(8)]) for i in x])
+
+    def message_to_bin(self, msg):
+        return ''.join([format(ord(c), "08b") for c in msg])
+
+    def encode(self, img: np.ndarray, msg: str) -> np.ndarray:
+        img = self.to_bytes_matrix(img)
+        w,h = len(img), len(img[0])
+
+        # byte processing
+        img_bytes = self.to_bytes(img)
+
+        password = 'SENHA'
+        msg_bytes = self.message_to_bin(password + "#" + msg + '#')
+        for i, b in enumerate(msg_bytes):
+            img_bytes[i, -1] = int(b)
+        
+        # convert back to uint
+        if self.color_mode == 'L':
+            converted = self.to_uint(img_bytes).reshape(w,h)
+        elif self.color_mode == 'RGB':
+            converted = self.to_uint(img_bytes).reshape(w,h,3)
+
+        return converted / 255
+
+    def decode(self, img: np.ndarray) -> str:
+        img = self.to_bytes_matrix(img)
+        
+        # byte processing
+        img_bytes = self.to_bytes(img)
+        msg = []
+        password = []
+        start_index = 0
+        for i in range(0,len(img_bytes),8):
+            c = int(self.to_uint([img_bytes[i:i+8, -1]])[0])
+            c = chr(c)
+            if c == '#':
+                start_index = i+8
+                break
+            password.append(c)
+        password = ''.join(password)
+                
+        if password != 'SENHA':
+            return
+        for i in range(start_index,len(img_bytes),8):
+            c = int(self.to_uint([img_bytes[i:i+8, -1]])[0])
+            c = chr(c)
+            if c == '#':
+                break
+            msg.append(c)
+        msg = ''.join(msg)
+        return msg
 
     def test(self):
-        # f = np.fft.fft2(self.modified_image_data)
-        f = slow_fourier(self.modified_image_data)
-        img = slow_inverse_fourier(f)
-        # img = np.fft.ifft2(f)
-        self.update_canvas(np.real(img))
+        self.encode('SUS')
+        self.decode()
 
 app = MainApp(root)
 root.mainloop()

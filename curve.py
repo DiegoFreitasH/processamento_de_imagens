@@ -122,6 +122,25 @@ class CurveEditor:
         
         return np.vectorize(poly)
     
+    def bezier_curve(self):
+        px = np.array(self.points_x)
+        py = np.array(self.points_y)
+        sorted_index = np.argsort(px)
+
+        px = px[sorted_index]
+        py = py[sorted_index]
+
+        def curve(x):
+            for i in range(len(px)):
+                if x <= px[i][0]:
+                    p1 = px[i]
+                    p2 = px[i-1]
+                    dist = np.linalg.norm(p1 - p2)
+                    pass
+    
+        return curve
+        
+    
     def reset(self):
         self.points_x = [0,1]
         self.points_y = [0,1]

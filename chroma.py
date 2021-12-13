@@ -68,6 +68,8 @@ class Chroma:
                 self.chroma_data = np.asarray(im) / 255
                 if im.mode == 'L':
                     self.chroma_data = np.repeat(self.chroma_data[:, :, np.newaxis], 3, axis=2)
+                if im.mode == 'RGBA':
+                    self.chroma_data = self.chroma_data[:,:,:-1]
                 self.has_chroma_img = True
                 self.update_threshold()
         except Exception as e:
