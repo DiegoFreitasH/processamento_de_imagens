@@ -22,6 +22,7 @@ class MainApp(tk.Frame):
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
         self.parent.title('Controls')
+        self.parent.geometry('350x500')
         self.history = []
         self.image_data = np.array([])
         self.modified_image_data = self.image_data
@@ -70,11 +71,7 @@ class MainApp(tk.Frame):
 
         frequencymenu = tk.Menu(menubar, tearoff=0)
         frequencymenu.add_command(label='Paint Fourier', command=self.edit_image_frequency)
-        frequencymenu.add_command(label='Apply Filter', command=self.frequency_filter_editor)
-        frequencymenu.add_command(label='Passa Circulo', command=self.pass_circ)
-        frequencymenu.add_command(label='Rejeita Circulo', command=self.reject_circ)
-        frequencymenu.add_command(label='Passa Disk', command=self.pass_disk)
-        frequencymenu.add_command(label='Rejeita Disk', command=self.reject_disk)
+        frequencymenu.add_command(label='Filter Editor', command=self.frequency_filter_editor)
         frequencymenu.add_separator()
         frequencymenu.add_command(label='Slow Fourier Transform', command=self.slow_fourier)
         menubar.add_cascade(label='Frequency', menu=frequencymenu)
@@ -209,60 +206,25 @@ class MainApp(tk.Frame):
         filter_size_controls.grid(row=2, column=2*offset+canvas_span, columnspan=offset)
         self.controls_vars.append([self.filter_size, 3])
 
-        tk.Label(parent, text='Frequency Filter Inner Radius').grid(row=3, column=2*offset+canvas_span, columnspan=offset)
-        self.frequency_filter_inner_radius = tk.IntVar()
-        frequency_inner_radius_controls = tk.Scale(
-            parent,
-            variable=self.frequency_filter_inner_radius,
-            from_=10,
-            to=50,
-            orient=HORIZONTAL
-        )
-        self.frequency_filter_inner_radius.set(20)
-        frequency_inner_radius_controls.grid(row=4, column=2*offset+canvas_span, columnspan=offset)
-        self.controls_vars.append([self.frequency_filter_inner_radius, 20])
-        
-        tk.Label(parent, text='Frequency Filter Outer Radius').grid(row=5, column=2*offset+canvas_span, columnspan=offset)
-        self.frequency_filter_outer_radius = tk.IntVar()
-        frequency_outer_radius_controls = tk.Scale(
-            parent,
-            variable=self.frequency_filter_outer_radius,
-            from_=10,
-            to=50,
-            orient=HORIZONTAL
-        )
-        self.frequency_filter_outer_radius.set(20)
-        frequency_outer_radius_controls.grid(row=6, column=2*offset+canvas_span, columnspan=offset)
-        self.controls_vars.append([self.frequency_filter_outer_radius, 20])
+        ttk.Separator(parent, orient='horizontal').grid(row=3, column=offset+canvas_span, columnspan=offset+canvas_span, sticky="we", pady=(10,10), padx=(10,10))
 
-        self.gaussian_decay_check = tk.BooleanVar()
-        gaussian_decay_controls = tk.Checkbutton(
-            parent,
-            text='Use Gaussian Decay',
-            variable=self.gaussian_decay_check,
-        )
-        gaussian_decay_controls.grid(row=7, column=2*offset+canvas_span, columnspan=offset)
-        self.controls_vars.append([self.gaussian_decay_check, False])
-
-        ttk.Separator(parent, orient='horizontal').grid(row=8, column=offset+canvas_span, columnspan=offset+canvas_span, sticky="we", pady=(10,10), padx=(10,10))
-
-        tk.Label(parent, text='Message:').grid(row=9, column=2*offset+canvas_span, columnspan=offset)
+        tk.Label(parent, text='Message:').grid(row=4, column=2*offset+canvas_span, columnspan=offset)
         self.secret_msg = tk.Entry(parent, width=10)
-        self.secret_msg.grid(row=10, column=2*offset+canvas_span, columnspan=offset)
+        self.secret_msg.grid(row=5, column=2*offset+canvas_span, columnspan=offset)
         self.encode_btn = tk.Button(
             parent,
             text='Encode',
             command=self.encode_callback
-        ).grid(row=11,column=2*offset+canvas_span, columnspan=offset)
+        ).grid(row=6,column=2*offset+canvas_span, columnspan=offset)
 
         self.decode_btn = tk.Button(
             parent,
             text='Decode',
             command=self.decode_callback
-        ).grid(row=12,column=2*offset+canvas_span, columnspan=offset)
+        ).grid(row=7,column=2*offset+canvas_span, columnspan=offset)
 
         self.decoded_msg = tk.Label(parent)
-        self.decoded_msg.grid(row=13, column=2*offset+canvas_span, columnspan=offset)
+        self.decoded_msg.grid(row=8, column=2*offset+canvas_span, columnspan=offset)
 
         self.parent.anchor('center')
         
@@ -500,65 +462,6 @@ class MainApp(tk.Frame):
         img = self.array_to_image(self.normalize_image(np.absolute(frequency), 0, 1000))
         Paint(img, frequency, slow_inverse_fourier, self)
 
-    @update_history
-    def pass_circ(self):
-        if self.color_mode == 'RGB':
-            return
-        
-        w = len(self.modified_image_data)
-        h = len(self.modified_image_data[0])
-        f = FrequencyFilter(self.frequency_filter_inner_radius.get(), w, h, gauss=self.gaussian_decay_check.get())
-        frequency = self.get_fft_from_image(self.modified_image_data)
-        filtered_frequency = f.apply(frequency)
-        
-        self.modified_image_data = self.get_image_from_fft(filtered_frequency)
-        self.image_data = self.modified_image_data
-        self.update_canvas(self.modified_image_data)
-    
-    @update_history
-    def reject_circ(self):
-        if self.color_mode == 'RGB':
-            return
-        w = len(self.modified_image_data)
-        h = len(self.modified_image_data[0])
-        f = FrequencyFilter(self.frequency_filter_inner_radius.get(), w, h, invert=True, gauss=self.gaussian_decay_check.get())
-        frequency = self.get_fft_from_image(self.modified_image_data)
-        filtered_frequency = f.apply(frequency)
-        
-        self.modified_image_data = self.get_image_from_fft(filtered_frequency)
-        self.image_data = self.modified_image_data
-        self.update_canvas(self.modified_image_data)
-
-    @update_history
-    def pass_disk(self):
-        if self.color_mode == 'RGB':
-            return
-        w = len(self.modified_image_data)
-        h = len(self.modified_image_data[0])
-        inner_r = self.frequency_filter_inner_radius.get()
-        outer_r = self.frequency_filter_outer_radius.get()
-        f = DiskFrequencyFilter(inner_r, outer_r, w, h)
-        frequency = self.get_fft_from_image(self.modified_image_data)
-        filtered_frequency = f.apply(frequency)
-        
-        self.modified_image_data = self.get_image_from_fft(filtered_frequency)
-        self.update_canvas(self.modified_image_data)
-
-    @update_history
-    def reject_disk(self):
-        if self.color_mode == 'RGB':
-            return
-        w = len(self.modified_image_data)
-        h = len(self.modified_image_data[0])
-        inner_r = self.frequency_filter_inner_radius.get()
-        outer_r = self.frequency_filter_outer_radius.get()
-        f = DiskFrequencyFilter(inner_r, outer_r, w, h, invert=True)
-        frequency = self.get_fft_from_image(self.modified_image_data)
-        filtered_frequency = f.apply(frequency)
-        
-        self.modified_image_data = self.get_image_from_fft(filtered_frequency)
-        self.update_canvas(self.modified_image_data)
-    
     @update_history
     def nearest_neighbor_resize(self, image_data: np.ndarray, ratio: float) -> np.ndarray:
         w = len(image_data)
