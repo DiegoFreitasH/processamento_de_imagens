@@ -10,7 +10,7 @@ from tkinter import Scale, filedialog
 from tkinter.constants import END, HORIZONTAL
 from histogram import Histogram, rgb2hsv, hsv2rgb
 from fourier import slow_fourier, slow_inverse_fourier
-from image_filter import BoxBlur, ContraharmonicFilter, ConvFilterEditor, DiskFrequencyFilter, FrequencyFilter, GaussianFilter, GeometricFilter, HarmonicFilter, MeanFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
+from image_filter import BoxBlur, ContraharmonicFilter, ConvFilterEditor, DiskFrequencyFilter, FrequencyFilter, FrequencyFilterEditor, GaussianFilter, GeometricFilter, HarmonicFilter, MeanFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
 
 IMG_DIRECTORY = '~/UFC/processamento_imagens/processing_project/img'
 filetypes = (('all files', '*.*'), ('JPG images', '*.jpeg'), ('PNG images', '*.png'), ('Tif images', '*.tif'), ('BMP Images', '*.bmp'))
@@ -22,6 +22,7 @@ class MainApp(tk.Frame):
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
         self.parent.title('Controls')
+        self.history = []
         self.image_data = np.array([])
         self.modified_image_data = self.image_data
 
@@ -42,15 +43,16 @@ class MainApp(tk.Frame):
         editmenu.add_command(label='Values Curve', command=self.edit_values_curve)
         editmenu.add_command(label='Chroma Key', command=self.apply_chroma)
         editmenu.add_command(label='Show histogram', command=self.histogram_editor)
-        editmenu.add_command(label='Teste', command=self.test)
+        editmenu.add_separator()
+        editmenu.add_command(label='Undo', command=self.undo)
+        editmenu.add_command(label='Test', command=self.test)
         menubar.add_cascade(label='Edit', menu=editmenu)
 
         filtermenu = tk.Menu(menubar, tearoff=0)
         filtermenu.add_command(label='Box Blur', command=self.create_filter_callback(BoxBlur))
         filtermenu.add_command(label='Gaussian Filter', command=self.create_filter_callback(GaussianFilter))
-        filtermenu.add_command(label='Laplacian Filter', command=self.create_filter_callback(LaplacianFilter, acc=True))
+        filtermenu.add_command(label='Laplacian Filter', command=self.create_filter_callback(LaplacianFilter, acc=True, normalize_result=True))
         filtermenu.add_command(label='Median Filter', command=self.create_filter_callback(MedianFilter))
-        filtermenu.add_command(label='Mean Filter', command=self.create_filter_callback(MeanFilter))
         filtermenu.add_command(label='Geometric Filter', command=self.create_filter_callback(GeometricFilter))
         filtermenu.add_command(label='Harmonic Filter', command=self.create_filter_callback(HarmonicFilter))
         filtermenu.add_command(label='Contraharmonic Filter', command=self.create_filter_callback(ContraharmonicFilter))
@@ -67,7 +69,8 @@ class MainApp(tk.Frame):
         menubar.add_cascade(label='Sharpen', menu=sharpenmenu)
 
         frequencymenu = tk.Menu(menubar, tearoff=0)
-        frequencymenu.add_command(label='Fast Fourier Transform', command=self.edit_image_frequency)
+        frequencymenu.add_command(label='Paint Fourier', command=self.edit_image_frequency)
+        frequencymenu.add_command(label='Apply Filter', command=self.frequency_filter_editor)
         frequencymenu.add_command(label='Passa Circulo', command=self.pass_circ)
         frequencymenu.add_command(label='Rejeita Circulo', command=self.reject_circ)
         frequencymenu.add_command(label='Passa Disk', command=self.pass_disk)
@@ -282,6 +285,26 @@ class MainApp(tk.Frame):
         self.decoded_msg.configure(text='')
         self.decoded_msg.text = ''
     
+    def undo(self):
+        if len(self.history) > 0:
+            self.modified_image_data = self.history.pop()
+            self.image_data = self.modified_image_data
+            if len(self.modified_image_data.shape) < 3:
+                self.color_mode = 'L'
+            elif len(self.modified_image_data.shape) == 3:
+                self.color_mode = 'RGB'
+            self.update_canvas(self.modified_image_data)
+
+    def update_history(func):
+
+        def wrapper(*args, **kwargs):
+            args[0].history.append(args[0].modified_image_data)
+            if len(args[0].history) > 5:
+                args[0].history.pop(0)
+            return func(*args, **kwargs)
+        
+        return wrapper
+
     def open_file(self):
         filename = filedialog.askopenfilename(
             initialdir=IMG_DIRECTORY, 
@@ -343,6 +366,7 @@ class MainApp(tk.Frame):
         
         self.update_canvas(self.modified_image_data)
 
+    @update_history
     def to_greyscale(self, t='A'):
         if self.color_mode != "L" and t=='A':
             self.color_mode = "L"
@@ -355,6 +379,7 @@ class MainApp(tk.Frame):
             self.modified_image_data = self.image_data
             self.update_canvas(self.modified_image_data)
 
+    @update_history
     def to_sepia(self):
         sepia_matrix = np.array([
             [0.393, 0.769, 0.189],
@@ -376,15 +401,19 @@ class MainApp(tk.Frame):
     def on_close_display(self):
         self.image_displayer.withdraw()
     
+    @update_history
     def histogram_editor(self):
         Histogram(self)
 
+    @update_history
     def edit_conv_filter(self):
         ConvFilterEditor(self.filter_size.get(), self)
 
+    @update_history
     def edit_values_curve(self):
         x = CurveEditor(self)
 
+    @update_history
     def sharpen_laplacian(self):
         mask = self.apply_filter(LaplacianFilter())
         
@@ -392,12 +421,14 @@ class MainApp(tk.Frame):
         self.image_data = self.modified_image_data 
         self.update_canvas(self.image_data)
 
+    @update_history
     def sharpen_gaussian(self):
         mask = self.apply_filter(GaussianFilter())
         self.modified_image_data = self.modified_image_data + 1.5*(self.modified_image_data - mask)
         self.image_data = self.modified_image_data 
         self.update_canvas(self.image_data)
 
+    @update_history
     def sobel_border_detection(self):
         sobelx = SobelX(self.filter_size.get())
         sobely = SobelY(self.filter_size.get())
@@ -411,8 +442,11 @@ class MainApp(tk.Frame):
         self.update_canvas(self.modified_image_data)
 
     def create_filter_callback(self, filter_obj, normalize_result=False, acc=False):
-
+        
         def filter_callback():
+            self.history.append(self.modified_image_data)
+            if len(self.history) > 5:
+                self.history.pop(0)
             self.image_data = self.apply_filter(filter_obj(self.filter_size.get()), normalize_result, acc)
             self.modified_image_data = self.image_data
             self.update_canvas(self.image_data)
@@ -442,6 +476,7 @@ class MainApp(tk.Frame):
         return np.real(np.fft.ifft2(np.fft.ifftshift(fft))) 
 
     # Create apply custom image frequency
+    @update_history
     def edit_image_frequency(self):
         if self.color_mode == 'RGB':
             return
@@ -450,6 +485,11 @@ class MainApp(tk.Frame):
         img = self.array_to_image(self.normalize_image(np.absolute(frequency), 0, 1000))
         Paint(img, frequency, np.fft.ifft2,self)
 
+    @update_history
+    def frequency_filter_editor(self):
+        FrequencyFilterEditor(self)
+
+    @update_history
     def slow_fourier(self):
         if self.color_mode == 'RGB':
             return
@@ -460,9 +500,11 @@ class MainApp(tk.Frame):
         img = self.array_to_image(self.normalize_image(np.absolute(frequency), 0, 1000))
         Paint(img, frequency, slow_inverse_fourier, self)
 
+    @update_history
     def pass_circ(self):
         if self.color_mode == 'RGB':
             return
+        
         w = len(self.modified_image_data)
         h = len(self.modified_image_data[0])
         f = FrequencyFilter(self.frequency_filter_inner_radius.get(), w, h, gauss=self.gaussian_decay_check.get())
@@ -473,6 +515,7 @@ class MainApp(tk.Frame):
         self.image_data = self.modified_image_data
         self.update_canvas(self.modified_image_data)
     
+    @update_history
     def reject_circ(self):
         if self.color_mode == 'RGB':
             return
@@ -486,6 +529,7 @@ class MainApp(tk.Frame):
         self.image_data = self.modified_image_data
         self.update_canvas(self.modified_image_data)
 
+    @update_history
     def pass_disk(self):
         if self.color_mode == 'RGB':
             return
@@ -500,6 +544,7 @@ class MainApp(tk.Frame):
         self.modified_image_data = self.get_image_from_fft(filtered_frequency)
         self.update_canvas(self.modified_image_data)
 
+    @update_history
     def reject_disk(self):
         if self.color_mode == 'RGB':
             return
@@ -514,6 +559,7 @@ class MainApp(tk.Frame):
         self.modified_image_data = self.get_image_from_fft(filtered_frequency)
         self.update_canvas(self.modified_image_data)
     
+    @update_history
     def nearest_neighbor_resize(self, image_data: np.ndarray, ratio: float) -> np.ndarray:
         w = len(image_data)
         h = len(image_data[0])
@@ -530,6 +576,7 @@ class MainApp(tk.Frame):
                 out[i,j] = image_data[px,py]
         return out
     
+    @update_history
     def bilinear_resize(self, image_data: np.ndarray, ratio: float) -> np.ndarray:
         w = len(image_data)
         h = len(image_data[0])
@@ -582,7 +629,8 @@ class MainApp(tk.Frame):
         bl = self.rotate_point(w,0,angle)
         br = self.rotate_point(w,h,angle)
         return np.array([tl, tr, bl, br])
-
+    
+    @update_history
     def nearest_neighbor_rotation(self, image_data: np.ndarray, angle: float) -> np.ndarray:
         w = len(image_data)
         h = len(image_data[0])
@@ -601,6 +649,7 @@ class MainApp(tk.Frame):
                 out[i,j] = image_data[px,py]
         return out
     
+    @update_history
     def bilinear_rotation(self, image_data: np.ndarray, angle: float):
         w = len(image_data)
         h = len(image_data[0])
@@ -645,6 +694,7 @@ class MainApp(tk.Frame):
         
         return callback
 
+    @update_history
     def apply_chroma(self):
         Chroma(self.modified_image_data, self)
 
@@ -658,7 +708,6 @@ class MainApp(tk.Frame):
         msg = self.decode(self.modified_image_data)
         self.decoded_msg.config(text=f'Decoded: {msg}')
         self.decoded_msg.text = f'Decoded: {msg}'
-
 
     def normalize_image(self, image_data: np.ndarray, minv=None, maxv=None) -> np.ndarray:
         if minv == maxv == None:
@@ -683,7 +732,7 @@ class MainApp(tk.Frame):
     def to_uint(self, x: np.uint8):
         return np.uint8([np.sum([i[j]*(2**(8-j-1)) for j in range(8)]) for i in x])
 
-    def message_to_bin(self, msg):
+    def message_to_bin(self, msg: str):
         return ''.join([format(ord(c), "08b") for c in msg])
 
     def encode(self, img: np.ndarray, msg: str) -> np.ndarray:
@@ -725,6 +774,7 @@ class MainApp(tk.Frame):
                 
         if password != 'SENHA':
             return
+        
         for i in range(start_index,len(img_bytes),8):
             c = int(self.to_uint([img_bytes[i:i+8, -1]])[0])
             c = chr(c)
@@ -735,8 +785,8 @@ class MainApp(tk.Frame):
         return msg
 
     def test(self):
-        self.encode('SUS')
-        self.decode()
+        FrequencyFilterEditor(self)
 
-app = MainApp(root)
-root.mainloop()
+if __name__ == '__main__':
+    app = MainApp(root)
+    root.mainloop()

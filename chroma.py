@@ -85,7 +85,6 @@ class Chroma:
         else:
             self.edited_img = ((1 - self.chroma_mask) * self.base_img) + (self.chroma_mask * self.chroma_data)
             self.update_display(self.edited_img)
-        
 
     def update_display(self, img):
         if self.app == None:
@@ -95,7 +94,6 @@ class Chroma:
             self.image_display.grid(row=1, column=0)
         else:
             self.app.update_canvas(img)
-
 
     def apply(self):
         self.app.modified_image_data = ((1 - self.chroma_mask) * self.base_img) + (self.chroma_mask * self.chroma_data)

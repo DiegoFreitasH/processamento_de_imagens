@@ -139,10 +139,15 @@ class FrequencyFilter:
             Y, X = np.ogrid[-r:r:, -r:r]
             dist_from_center = np.sqrt(X**2 + Y**2)
             mask = dist_from_center <= r
+        
         self.f[half_w-r:half_w+r, half_h-r:half_h+r] = mask
 
         if invert:
             self.f = 1 - self.f
+    
+    def get_mask(self):
+        return self.f
+
     def apply(self, img_data: np.ndarray) -> np.ndarray:
         return self.f * img_data
 
@@ -152,16 +157,25 @@ class DiskFrequencyFilter:
         half_w = w//2
         half_h = h//2
         
-        assert r2 > r1 
+        assert r2 > r1
+
         Y2, X2 = np.ogrid[-r2:r2:, -r2:r2]
         dist_from_center2 = np.sqrt(X2**2 + Y2**2)
 
         mask =  (r1 <= dist_from_center2) & (dist_from_center2 <= r2)
+
+        if gauss:
+            g = gkern(kernlen=2*r2, std=r2/4)
+            mask = g * mask
+        
         self.f[half_w-r2:half_w+r2, half_h-r2:half_h+r2] = mask
         
         if invert:
             self.f = 1 - self.f
     
+    def get_mask(self):
+        return self.f
+
     def apply(self, img_data: np.ndarray) -> np.ndarray:
         return self.f * img_data
 
@@ -199,7 +213,6 @@ class ConvFilterEditor:
         )
         apply_controls.grid(row=self.size*i+1 + offset, column=0, columnspan=self.size)
         
-        self.root.mainloop()
     
     def apply(self):
         try:
@@ -212,6 +225,100 @@ class ConvFilterEditor:
             self.root.destroy()
         except Exception as e:
             print(e)
+
+class FrequencyFilterEditor:
+    
+    def __init__(self, app=None):
+        self.root = tk.Toplevel()
+        self.root.title('Fourier Editor')
+        self.app = app
+        self.w = len(self.app.modified_image_data)
+        self.h = len(self.app.modified_image_data[0])
+        self.max_r = min(self.w//2, self.h//2)
+        self.freq = self.app.get_fft_from_image(self.app.modified_image_data)
+        self.img = self.app.normalize_image(np.absolute(self.freq), 0, 1000)
+        tk.Label(self.root, text='Inner Radius').pack()
+        self.inner_r = tk.IntVar()
+        inner_c = tk.Scale(
+            self.root,
+            variable=self.inner_r,
+            from_=0,
+            to=self.max_r,
+            orient=tk.HORIZONTAL,
+            command=self.update_mask
+        )
+        self.inner_r.set(0)
+        inner_c.pack()
+
+        tk.Label(self.root, text='Outer Radius').pack()
+        self.outer_r = tk.IntVar()
+        outer_c = tk.Scale(
+            self.root,
+            variable=self.outer_r,
+            from_=0,
+            to=self.max_r,
+            orient=tk.HORIZONTAL,
+            command=self.update_mask
+        )
+        self.outer_r.set(20)
+        outer_c.pack()
+        
+        self.g_decay = tk.BooleanVar()
+        tk.Checkbutton(
+            self.root,
+            text='Use Gaussian Decay',
+            variable=self.g_decay,
+            offvalue=False,
+            onvalue=True,
+            command=self.update_mask
+        ).pack()
+
+        self.invert = tk.BooleanVar()
+        tk.Checkbutton(
+            self.root,
+            text='Invert',
+            variable=self.invert,
+            offvalue=False,
+            onvalue=True,
+            command=self.update_mask
+        ).pack()
+
+        tk.Button(
+            self.root,
+            text='Apply',
+            command=self.apply
+        ).pack()
+        
+        f = DiskFrequencyFilter(self.inner_r.get(), self.outer_r.get(), self.w, self.h, gauss=self.g_decay.get())
+        self.app.update_canvas(f.apply(self.img))
+
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+    
+    def update_mask(self, *event):
+        f = DiskFrequencyFilter(
+            self.inner_r.get(), 
+            self.outer_r.get(),
+            self.w, self.h, gauss=self.g_decay.get(), invert=self.invert.get(),
+        )
+        self.app.update_canvas(f.apply(self.img))
+
+    def apply(self):
+        f = DiskFrequencyFilter(
+            self.inner_r.get(), 
+            self.outer_r.get(),
+            self.w, self.h, gauss=self.g_decay.get(), invert=self.invert.get(),
+        )
+        frequency = self.app.get_fft_from_image(self.app.modified_image_data)
+        filtered_frequency = f.apply(frequency)
+        
+        self.app.modified_image_data = self.app.get_image_from_fft(filtered_frequency)
+        self.app.image_data = self.app.modified_image_data
+        self.app.update_canvas(self.app.modified_image_data)
+        self.on_close()
+
+    def on_close(self):
+        self.app.update_canvas(self.app.modified_image_data)
+        self.root.destroy()
 
 if __name__ == '__main__':
     ConvFilterEditor(3)
