@@ -10,7 +10,7 @@ from tkinter import Scale, filedialog
 from tkinter.constants import END, HORIZONTAL
 from histogram import Histogram, rgb2hsv, hsv2rgb
 from fourier import slow_fourier, slow_inverse_fourier
-from image_filter import BoxBlur, ContraharmonicFilter, ConvFilterEditor, DiskFrequencyFilter, FrequencyFilter, FrequencyFilterEditor, GaussianFilter, GeometricFilter, HarmonicFilter, MeanFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
+from image_filter import BoxBlur, ContraharmonicFilter, ConvFilterEditor, FrequencyFilterEditor, GaussianFilter, GeometricFilter, HarmonicFilter, MeanFilter, MedianFilter, LaplacianFilter, SobelX, SobelY
 
 IMG_DIRECTORY = '~/UFC/processamento_imagens/processing_project/img'
 filetypes = (('all files', '*.*'), ('JPG images', '*.jpeg'), ('PNG images', '*.png'), ('Tif images', '*.tif'), ('BMP Images', '*.bmp'))
@@ -46,7 +46,6 @@ class MainApp(tk.Frame):
         editmenu.add_command(label='Show histogram', command=self.histogram_editor)
         editmenu.add_separator()
         editmenu.add_command(label='Undo', command=self.undo)
-        editmenu.add_command(label='Test', command=self.test)
         menubar.add_cascade(label='Edit', menu=editmenu)
 
         filtermenu = tk.Menu(menubar, tearoff=0)
@@ -112,18 +111,19 @@ class MainApp(tk.Frame):
         negative_controls.grid(row=2, column=0, columnspan=offset)
         self.controls_vars.append([self.is_negative, False])
         
-        tk.Label(parent, text='Log').grid(row=3, column=0, columnspan=offset)
+        tk.Label(parent, text='Log2').grid(row=3, column=0, columnspan=offset)
         self.apply_log = tk.IntVar()
         log_control = tk.Scale(
             parent,
             variable=self.apply_log,
             from_=1,
-            to=10,
+            to=200,
             orient=HORIZONTAL,
             command=self.apply_changes
         )
+        self.apply_log.set(100)
         log_control.grid(row=4, column=0, columnspan=offset)
-        self.controls_vars.append([self.apply_log, 1])
+        self.controls_vars.append([self.apply_log, 100])
         
         tk.Label(parent, text='Gamma').grid(row=5, column=0, columnspan=offset)
         self.gamma_value = tk.DoubleVar()
@@ -306,13 +306,13 @@ class MainApp(tk.Frame):
         if(len(self.image_data) == 0):
             return
         
-        self.modified_image_data = self.image_data
+        self.modified_image_data = np.clip(self.image_data,0,1)
 
         if(self.is_negative.get()):
             self.modified_image_data = 1 - self.modified_image_data
         
-        if(self.apply_log.get() > 2):
-            self.modified_image_data = np.log(1 + self.normalize_image(self.modified_image_data)) / np.log(self.apply_log.get())
+        if(self.apply_log.get() != 100):
+            self.modified_image_data = (self.apply_log.get()/100) *  np.log2(1 + self.modified_image_data)
 
         self.modified_image_data = self.modified_image_data ** (self.gamma_value.get() / 100)
         self.modified_image_data = self.modified_image_data * self.brightness.get() / 100
@@ -686,9 +686,6 @@ class MainApp(tk.Frame):
             msg.append(c)
         msg = ''.join(msg)
         return msg
-
-    def test(self):
-        FrequencyFilterEditor(self)
 
 if __name__ == '__main__':
     app = MainApp(root)

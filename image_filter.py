@@ -1,7 +1,5 @@
 import numpy as np
 import tkinter as tk
-from numpy.core.fromnumeric import var
-from numpy.lib.arraypad import pad
 from scipy import signal
 
 class Filter():
@@ -109,7 +107,7 @@ class MeanFilter(NonLinearFilter):
 class HarmonicFilter(NonLinearFilter):
 
     def harmonic_mean(self, arr, **kwargs):
-        return len(arr) / np.sum(1.0/arr, **kwargs)
+        return len(arr) / np.sum(1.0/(arr + 1e-12), **kwargs)
 
     def __init__(self, size) -> None:
         super().__init__(size, self.harmonic_mean)
